@@ -9,8 +9,8 @@ import { Suspense } from "react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "HatoBet - Tahmin Oyunu",
-  description: "Haftalık maç tahminleri ve özel sorularla puan kazanın!",
+  title: "HatoBet",
+  description: "Haftalık maç tahminleri ile puan kazanın!",
 };
 
 export default async function RootLayout({
