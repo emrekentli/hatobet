@@ -1,14 +1,241 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
+  engineType = "binary"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// NextAuth.js 5 için gerekli modeller
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Kullanıcı modeli
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  username      String?   @unique
+  password      String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth.js ilişkileri
+  accounts      Account[]
+  sessions      Session[]
+
+  // HatoBet ilişkileri
+  predictions     Prediction[]
+  questionAnswers QuestionAnswer[]
+  weeklyScores    WeeklyScore[]
+  seasonScores    SeasonScore[]
+
+  @@map("users")
+}
+
+// Kullanıcı rolleri
+enum UserRole {
+  ADMIN
+  USER
+}
+
+// Sezon modeli
+model Season {
+  id          String       @id @default(cuid())
+  name        String       // Sezon adı (örn: "2024-2025 Sezonu")
+  startDate   DateTime     // Sezon başlangıç tarihi
+  endDate     DateTime?    // Sezon bitiş tarihi
+  status      SeasonStatus @default(ACTIVE) // Sezon durumu
+  totalWeeks  Int          // Toplam hafta sayısı
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // İlişkiler
+  matches      Match[]
+  weeklyScores WeeklyScore[]
+  seasonScores SeasonScore[]
+
+  @@map("seasons")
+}
+
+// Sezon durumu enum
+enum SeasonStatus {
+  ACTIVE    // Aktif sezon
+  FINISHED  // Bitmiş sezon
+  CANCELLED // İptal edilmiş sezon
+}
+
+// Maç modeli (güncellenmiş)
+model Match {
+  id          String   @id @default(cuid())
+  seasonId    String   // Sezon ID'si
+  homeTeam    String   // Ev sahibi takım
+  awayTeam    String   // Deplasman takımı
+  matchDate   DateTime // Maç tarihi ve saati
+  weekNumber  Int      // Hafta numarası
+  isActive    Boolean  @default(true) // Maç aktif mi?
+  isFinished  Boolean  @default(false) // Maç bitti mi?
+  homeScore   Int?     // Ev sahibi skoru
+  awayScore   Int?     // Deplasman skoru
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // İlişkiler
+  season     Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+  questions   Question[]
+
+  @@map("matches")
+}
+
+// Tahmin modeli
+model Prediction {
+  id        String   @id @default(cuid())
+  userId    String
+  matchId   String
+  homeScore Int      // Kullanıcının tahmin ettiği ev sahibi skoru
+  awayScore Int      // Kullanıcının tahmin ettiği deplasman skoru
+  winner    Winner   // Kazanan tahmini
+  points    Int      @default(0) // Bu tahmin için alınan puan
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // İlişkiler
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+  @@map("predictions")
+}
+
+// Kazanan enum
+enum Winner {
+  HOME
+  AWAY
+  DRAW
+}
+
+// Özel soru modeli
+model Question {
+  id            String       @id @default(cuid())
+  matchId       String
+  question      String       // Soru metni
+  questionType  QuestionType // Soru tipi
+  options       String[]     // Seçenekler (JSON array)
+  correctAnswer String?      // Doğru cevap
+  points        Int          // Bu soru için verilecek puan
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // İlişkiler
+  match           Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  questionAnswers QuestionAnswer[]
+
+  @@map("questions")
+}
+
+// Soru tipi enum
+enum QuestionType {
+  MULTIPLE_CHOICE // Çoktan seçmeli
+  YES_NO         // Evet/Hayır
+  TEXT           // Metin
+}
+
+// Soru cevabı modeli
+model QuestionAnswer {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  answer     String   // Kullanıcının cevabı
+  points     Int      @default(0) // Bu cevap için alınan puan
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // İlişkiler
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@map("question_answers")
+}
+
+// Haftalık skor modeli (güncellenmiş)
+model WeeklyScore {
+  id         String   @id @default(cuid())
+  userId     String
+  seasonId   String
+  weekNumber Int
+  totalPoints Int     @default(0) // O hafta toplam puan
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // İlişkiler
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId, weekNumber])
+  @@map("weekly_scores")
+}
+
+// Sezon skor modeli (yeni)
+model SeasonScore {
+  id          String   @id @default(cuid())
+  userId      String
+  seasonId    String
+  totalPoints Int      @default(0) // Sezon toplam puanı
+  rank        Int?     // Sezon sıralaması
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // İlişkiler
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId])
+  @@map("season_scores")
 }
