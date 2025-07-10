@@ -1,115 +1,287 @@
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { calculateMatchPoints } from "@/lib/rankings";
 
-// Kullanıcılar için maç listesi
+/**
+ * currentWeek:
+ * - En son tüm maçları tamamlanmış haftanın bir fazlası.
+ * - Eğer o haftada maç yoksa, maç olan en son haftayı döner.
+ * - Hiç maç yoksa 1.
+ */
+async function calculateCurrentWeek(seasonId: string) {
+  const allMatches = await prisma.match.findMany({
+    where: { seasonId },
+    select: { weekNumber: true, isFinished: true },
+    orderBy: { weekNumber: "asc" },
+  });
+  if (!allMatches.length) return 1;
+
+  // Haftalara grupla
+  const weekStatus: Record<number, boolean[]> = {};
+  for (const match of allMatches) {
+    if (!weekStatus[match.weekNumber]) weekStatus[match.weekNumber] = [];
+    weekStatus[match.weekNumber].push(match.isFinished);
+  }
+  const allWeeks = Object.keys(weekStatus).map(Number).sort((a, b) => a - b);
+
+  // En son tüm maçları tamamlanan hafta
+  let lastCompleteWeek = 0;
+  for (const w of allWeeks) {
+    if (weekStatus[w].every(Boolean)) lastCompleteWeek = w;
+    else break;
+  }
+
+  // Bir sonraki haftada maç var mı?
+  const nextWeek = lastCompleteWeek + 1;
+  const hasNextWeekMatch = !!weekStatus[nextWeek];
+
+  // Eğer bir sonraki haftada hiç maç yoksa en son maç olan haftayı döneriz.
+  const latestMatchWeek = allWeeks[allWeeks.length - 1];
+  if (!hasNextWeekMatch) {
+    return latestMatchWeek || 1;
+  }
+  return nextWeek;
+}
+
+// ========== GET ==========
 export async function GET(request: NextRequest) {
   try {
-    // Kullanıcı girişi kontrolü
-    const session = await auth()
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "Giriş yapmanız gerekiyor" },
-        { status: 401 }
-      )
+    const { searchParams } = new URL(request.url);
+    const week = searchParams.get("week");
+    const seasonId = searchParams.get("seasonId");
+    const search = searchParams.get("search");
+
+    // En güncel sezonu bul (aktif yoksa en son başlayan)
+    let currentSeason = null;
+    if (seasonId) {
+      currentSeason = await prisma.season.findUnique({ where: { id: seasonId } });
+    } else {
+      currentSeason = await prisma.season.findFirst({
+        where: { status: "ACTIVE" },
+        orderBy: { startDate: "desc" },
+      }) || await prisma.season.findFirst({ orderBy: { startDate: "desc" } });
+    }
+    if (!currentSeason) {
+      return NextResponse.json({ error: "Sezon bulunamadı" }, { status: 404 });
     }
 
-    // Kullanıcıyı email ile bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true }
-    })
+    // Mevcut hafta hesapla (örneğin ekranda default olarak seçilecek hafta)
+    const currentWeek = await calculateCurrentWeek(currentSeason.id);
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Kullanıcı bulunamadı" },
-        { status: 404 }
-      )
+    // Maçları getir
+    const where: any = { seasonId: currentSeason.id };
+    if (week && parseInt(week) > 0) where.weekNumber = parseInt(week);
+    if (search) {
+      where.OR = [
+        { homeTeam: { contains: search, mode: 'insensitive' } },
+        { awayTeam: { contains: search, mode: 'insensitive' } }
+      ];
     }
 
-    // Aktif sezonu getir
-    const activeSeason = await prisma.season.findFirst({
-      where: { status: "ACTIVE" }
-    })
-
-    if (!activeSeason) {
-      return NextResponse.json({
-        matches: [],
-        season: null,
-        message: "Aktif sezon bulunamadı"
-      })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const week = searchParams.get("week")
-
-    const where: any = {
-      seasonId: activeSeason.id
-    }
-    
-    if (week && week !== "0") {
-      where.weekNumber = parseInt(week)
-    }
-
-    // Maçları ve kullanıcının tahminlerini getir
     const matches = await prisma.match.findMany({
       where,
       include: {
+        season: true,
         predictions: {
-          where: {
-            userId: user.id
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        questions: {
+          where: { isActive: true },
+          include: {
+            questionAnswers: {
+              include: { user: { select: { id: true, name: true, email: true } } },
+            },
           },
-          select: {
-            id: true,
-            homeScore: true,
-            awayScore: true,
-            winner: true,
-            points: true,
-            userId: true
-          }
+        },
+        _count: { select: { predictions: true, questions: true } },
+      },
+      orderBy: { matchDate: "asc" },
+    });
+
+    // Sezon ve haftalar
+    const availableSeasons = await prisma.season.findMany({ orderBy: { startDate: "desc" } });
+    const availableWeeks = Array.from({ length: Math.max(currentSeason.totalWeeks, 1) }, (_, i) => i + 1);
+
+  return NextResponse.json({ 
+      matches,
+      currentSeason,
+      currentWeek,
+      availableSeasons,
+      availableWeeks,
+    });
+  } catch (error) {
+    console.error("Error fetching matches:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// ========== POST ==========
+export async function POST(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { homeTeam, awayTeam, matchDate, weekNumber, seasonId, homeScore, awayScore, specialQuestions } = body;
+    if (!homeTeam || !awayTeam || !matchDate || !weekNumber || !seasonId) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // Maçı oluştur
+    const newMatch = await prisma.match.create({
+      data: {
+        seasonId,
+        homeTeam,
+        awayTeam,
+        matchDate: new Date(matchDate),
+        weekNumber: parseInt(weekNumber),
+        homeScore: homeScore ? parseInt(homeScore) : null,
+        awayScore: awayScore ? parseInt(awayScore) : null,
+        isFinished: !!(homeScore && awayScore),
+        isActive: !(homeScore && awayScore),
+      },
+      include: {
+        season: true,
+        predictions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
         },
         questions: {
           include: {
             questionAnswers: {
-              where: { userId: user.id },
-              select: { id: true, answer: true, points: true, userId: true }
-            }
-          }
+              include: { user: { select: { id: true, name: true, email: true } } },
+            },
+          },
         },
-        _count: {
-          select: {
-            predictions: true,
-            questions: true,
-          }
-        }
+        _count: { select: { predictions: true, questions: true } },
       },
-      orderBy: [
-        { weekNumber: "asc" },
-        { matchDate: "asc" }
-      ]
-    })
+    });
 
-    // Maçları düzenle - kullanıcının tahminini ayrı alan olarak ekle
-    const formattedMatches = matches.map(match => ({
-      ...match,
-      userPrediction: match.predictions[0] || null,
-      predictions: undefined // Tahminleri gizle
-    }))
-
-    return NextResponse.json({ 
-      matches: formattedMatches,
-      season: {
-        id: activeSeason.id,
-        name: activeSeason.name,
-        status: activeSeason.status,
-        totalWeeks: activeSeason.totalWeeks
+    // Special questions (varsa) ekle
+    if (specialQuestions && Array.isArray(specialQuestions) && specialQuestions.length > 0) {
+      for (const q of specialQuestions) {
+        await prisma.question.create({
+          data: {
+            matchId: newMatch.id,
+            question: q.question,
+            questionType: q.type,
+            options: q.options || [],
+            points: q.points || 5,
+            correctAnswer: q.answer || null,
+          },
+        });
       }
-    })
+    }
+
+    // Maç skorla birlikte oluşturulduysa puanları hesapla
+    if (newMatch.isFinished) {
+      await calculateMatchPoints(newMatch.id);
+    }
+
+    return NextResponse.json({ success: true, match: newMatch });
   } catch (error) {
-    console.error("Get matches error:", error)
-    return NextResponse.json(
-      { error: "Sunucu hatası" },
-      { status: 500 }
-    )
+    console.error("Error creating match:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-} 
+}
+
+// ========== PUT ==========
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, homeTeam, awayTeam, matchDate, weekNumber, seasonId, homeScore, awayScore, specialQuestions } = body;
+    if (!id) return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
+
+    // Güncelleme objesi
+    const updateData: any = {};
+    if (homeTeam) updateData.homeTeam = homeTeam;
+    if (awayTeam) updateData.awayTeam = awayTeam;
+    if (matchDate) updateData.matchDate = new Date(matchDate);
+    if (weekNumber) updateData.weekNumber = parseInt(weekNumber);
+    if (seasonId) updateData.seasonId = seasonId;
+
+    // Skor güncellemesi
+    let scoreUpdated = false;
+    if (homeScore !== undefined && awayScore !== undefined) {
+      updateData.homeScore = parseInt(homeScore) || null;
+      updateData.awayScore = parseInt(awayScore) || null;
+      updateData.isFinished = true;
+      updateData.isActive = false;
+      scoreUpdated = true;
+    }
+
+    const updatedMatch = await prisma.match.update({
+      where: { id },
+      data: updateData,
+      include: {
+        season: true,
+        predictions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        questions: {
+          include: {
+            questionAnswers: {
+              include: { user: { select: { id: true, name: true, email: true } } },
+            },
+          },
+        },
+        _count: { select: { predictions: true, questions: true } },
+      },
+    });
+
+    // Special questions güncelle
+    if (specialQuestions) {
+      await prisma.question.deleteMany({ where: { matchId: id } });
+      for (const q of specialQuestions) {
+        await prisma.question.create({
+          data: {
+            matchId: id,
+            question: q.question,
+            questionType: q.type,
+            options: q.options || [],
+            points: q.points || 5,
+            correctAnswer: q.answer || null,
+          },
+        });
+      }
+    }
+
+    // Skor güncellendiyse puanları hesapla
+    if (scoreUpdated) {
+      await calculateMatchPoints(id);
+    }
+
+    return NextResponse.json({ success: true, match: updatedMatch });
+  } catch (error) {
+    console.error("Error updating match:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// ========== DELETE ==========
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
+
+    await prisma.match.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting match:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
-import { formatDate } from "@/lib/utils";
 
 interface Match {
   id: string;
@@ -48,6 +47,35 @@ interface Match {
   }>;
 }
 
+// MOCK DATA
+const MOCK_MATCH: Match = {
+  id: "match1",
+  homeTeam: "Galatasaray",
+  awayTeam: "Fenerbahçe",
+  matchDate: "2024-06-01T20:00:00Z",
+  homeScore: null,
+  awayScore: null,
+  isFinished: false,
+  isActive: true,
+  weekNumber: 1,
+  season: { id: "season1", name: "2024 Sezonu" },
+  questions: [
+    {
+      id: "q1",
+      question: "İlk golü kim atar?",
+      questionType: "TEXT",
+      options: [],
+      points: 5,
+      correctAnswer: null,
+      questionAnswers: []
+    }
+  ],
+  predictions: [
+    { id: "p1", homeScore: 2, awayScore: 1, points: 3, user: { id: "u1", name: "Kullanıcı 1", email: "user1@example.com" } },
+    { id: "p2", homeScore: 1, awayScore: 1, points: 1, user: { id: "u2", name: "Kullanıcı 2", email: "user2@example.com" } }
+  ]
+};
+
 export default function MatchDetailPage() {
   const params = useParams();
   const matchId = params.id as string;
@@ -76,96 +104,45 @@ export default function MatchDetailPage() {
     fetchMatch();
   }, [matchId]);
 
+  // Maç verisini getir (MOCK)
   const fetchMatch = async () => {
-    try {
-      const res = await fetch(`/api/matches/${matchId}`);
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || "Maç yüklenemedi");
-      
-      setMatch(data.match);
-      
-      // Kullanıcının mevcut tahminini form'a doldur
-      if (data.match.predictions) {
-        const userPrediction = data.match.predictions.find((p: any) => p.user.email === session?.user?.email);
-        if (userPrediction) {
-          setPredictionForm({
-            homeScore: userPrediction.homeScore.toString(),
-            awayScore: userPrediction.awayScore.toString()
-          });
-        }
+    setMatch(MOCK_MATCH);
+    setLoading(false);
+    // Kullanıcı tahmini mock olarak doldurulabilir
+    if (MOCK_MATCH.predictions) {
+      const userPrediction = MOCK_MATCH.predictions[0];
+      if (userPrediction) {
+        setPredictionForm({
+          homeScore: userPrediction.homeScore.toString(),
+          awayScore: userPrediction.awayScore.toString()
+        });
       }
-      
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
+  // Tahmin gönder (MOCK)
   const handlePrediction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session?.user?.email) return;
-    
     setSubmittingPrediction(true);
     setPredictionError("");
     setPredictionSuccess("");
-    
-    try {
-      const res = await fetch(`/api/matches/${matchId}/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          homeScore: parseInt(predictionForm.homeScore),
-          awayScore: parseInt(predictionForm.awayScore)
-        })
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || "Tahmin gönderilemedi");
-      
+    setTimeout(() => {
       setPredictionSuccess("Tahmininiz kaydedildi!");
-      fetchMatch(); // Maç verilerini tekrar yükle
-      
-    } catch (err: any) {
-      setPredictionError(err.message);
-    } finally {
       setSubmittingPrediction(false);
-    }
+    }, 1000);
   };
 
+  // Soruya cevap gönder (MOCK)
   const handleAnswerQuestion = async (questionId: string, answer: string) => {
     if (!answer.trim()) return;
-    
-    setSubmittingAnswer(prev => ({ ...prev, [questionId]: true }));
-    setAnswerError(prev => ({ ...prev, [questionId]: "" }));
-    setAnswerSuccess(prev => ({ ...prev, [questionId]: "" }));
-    
-    try {
-      const res = await fetch("/api/questions/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId, answer }),
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || "Cevap gönderilemedi");
-      }
-      
-      setAnswerSuccess(prev => ({ ...prev, [questionId]: "Cevabınız kaydedildi!" }));
-      setQuestionAnswers(prev => ({ ...prev, [questionId]: answer }));
-      
-      // Maç verilerini tekrar yükle
-      fetchMatch();
-      
-    } catch (err: any) {
-      setAnswerError(prev => ({ ...prev, [questionId]: err.message }));
-    } finally {
-      setSubmittingAnswer(prev => ({ ...prev, [questionId]: false }));
-    }
+    setSubmittingAnswer((prev) => ({ ...prev, [questionId]: true }));
+    setAnswerError((prev) => ({ ...prev, [questionId]: "" }));
+    setAnswerSuccess((prev) => ({ ...prev, [questionId]: "" }));
+    setTimeout(() => {
+      setAnswerSuccess((prev) => ({ ...prev, [questionId]: "Cevabınız kaydedildi!" }));
+      setQuestionAnswers((prev) => ({ ...prev, [questionId]: answer }));
+      setSubmittingAnswer((prev) => ({ ...prev, [questionId]: false }));
+    }, 1000);
   };
 
   if (loading) {
@@ -208,7 +185,7 @@ export default function MatchDetailPage() {
               {match.homeTeam} vs {match.awayTeam}
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              {formatDate(match.matchDate)}
+              {format(new Date(match.matchDate), "dd MMMM yyyy HH:mm", { locale: tr })}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {match.season.name} - Hafta {match.weekNumber}

@@ -206,13 +206,16 @@ model QuestionAnswer {
 
 // Haftalık skor modeli (güncellenmiş)
 model WeeklyScore {
-  id         String   @id @default(cuid())
-  userId     String
-  seasonId   String
-  weekNumber Int
-  totalPoints Int     @default(0) // O hafta toplam puan
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  userId                String
+  seasonId              String
+  weekNumber            Int
+  totalPoints           Int      @default(0) // O hafta toplam puan
+  correctScores         Int      @default(0) // Doğru skor sayısı
+  correctResults        Int      @default(0) // Doğru sonuç sayısı
+  specialQuestionPoints Int      @default(0) // Özel soru puanları
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   // İlişkiler
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -224,13 +227,16 @@ model WeeklyScore {
 
 // Sezon skor modeli (yeni)
 model SeasonScore {
-  id          String   @id @default(cuid())
-  userId      String
-  seasonId    String
-  totalPoints Int      @default(0) // Sezon toplam puanı
-  rank        Int?     // Sezon sıralaması
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  userId                String
+  seasonId              String
+  totalPoints           Int      @default(0) // Sezon toplam puanı
+  correctScores         Int      @default(0) // Doğru skor sayısı
+  correctResults        Int      @default(0) // Doğru sonuç sayısı
+  specialQuestionPoints Int      @default(0) // Özel soru puanları
+  rank                  Int?     // Sezon sıralaması
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   // İlişkiler
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

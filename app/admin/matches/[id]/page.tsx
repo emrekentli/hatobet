@@ -1,527 +1,604 @@
-"use client";
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { useRef } from "react";
-import { formatDate } from "@/lib/utils";
+"use client"
+
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
+import Link from "next/link"
+import CommonButton from "@/components/CommonButton"
+import { formatDate } from "@/lib/utils"
+import { Season } from "@/types/all-types"
+
+interface MatchDetail {
+  id: string
+  homeTeam: string
+  awayTeam: string
+  matchDate: string
+  weekNumber: number
+  homeScore: number | null
+  awayScore: number | null
+  isActive: boolean
+  isFinished: boolean
+  season: Season
+  predictions: Array<{
+    id: string
+    homeScore: number
+    awayScore: number
+    points: number
+    createdAt: string
+    user: {
+      id: string
+      name: string
+      email: string
+    }
+  }>
+  questions: Array<{
+    id: string
+    question: string
+    questionType: "MULTIPLE_CHOICE" | "YES_NO" | "TEXT"
+    options: string[]
+    points: number
+    correctAnswer: string | null
+    questionAnswers: Array<{
+      id: string
+      answer: string
+      points: number
+      userId: string
+      user: {
+        id: string
+        name: string
+        email: string
+      }
+    }>
+  }>
+}
 
 export default function AdminMatchDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const matchId = params?.id as string;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [match, setMatch] = useState<any>(null);
-  const [stats, setStats] = useState<any>(null);
-  const [showQuestionModal, setShowQuestionModal] = useState(false);
-  const questionModalRef = useRef<HTMLDivElement>(null);
-  const [questionForm, setQuestionForm] = useState({
-    question: "",
-    questionType: "MULTIPLE_CHOICE",
-    options: [""],
-    points: 10
-  });
-  const [questionError, setQuestionError] = useState("");
-  const [questionSuccess, setQuestionSuccess] = useState("");
-  const [addingQuestion, setAddingQuestion] = useState(false);
-  const [showEditQuestionModal, setShowEditQuestionModal] = useState(false);
-  const editQuestionModalRef = useRef<HTMLDivElement>(null);
-  const [editingQuestion, setEditingQuestion] = useState<any>(null);
-  const [editQuestionForm, setEditQuestionForm] = useState({
-    question: "",
-    questionType: "MULTIPLE_CHOICE",
-    options: [""],
-    points: 10,
-    correctAnswer: ""
-  });
-  const [editQuestionError, setEditQuestionError] = useState("");
-  const [editQuestionSuccess, setEditQuestionSuccess] = useState("");
-  const [updatingQuestion, setUpdatingQuestion] = useState(false);
+  const { data: session, status } = useSession()
+  const params = useParams()
+  const router = useRouter()
+  const matchId = params.id as string
+  
+  const [match, setMatch] = useState<MatchDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [updatingScore, setUpdatingScore] = useState(false)
+  const [scoreForm, setScoreForm] = useState({
+    homeScore: "",
+    awayScore: ""
+  })
+  const [predictionSearch, setPredictionSearch] = useState("")
+  const [debugData, setDebugData] = useState<any>(null)
+  const [showDebug, setShowDebug] = useState(false)
 
+  // Authentication check
   useEffect(() => {
-    if (!matchId) return;
-    const fetchDetails = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/admin/matches/${matchId}/details`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Detaylar getirilemedi");
-        setMatch(data.match);
-        setStats(data.stats);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDetails();
-  }, [matchId]);
+    if (status === "loading") return
+    
+    if (!session?.user || session.user.role !== "ADMIN") {
+      router.push("/auth/login")
+      return
+    }
+    
+    fetchMatch()
+  }, [session, status, router, matchId])
 
-  // Modal dışında tıklayınca kapat
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (questionModalRef.current && !questionModalRef.current.contains(event.target as Node)) {
-        setShowQuestionModal(false);
-      }
-    }
-    if (showQuestionModal) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showQuestionModal]);
-
-  // Modal dışında tıklayınca kapat (edit)
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (editQuestionModalRef.current && !editQuestionModalRef.current.contains(event.target as Node)) {
-        setShowEditQuestionModal(false);
-      }
-    }
-    if (showEditQuestionModal) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showEditQuestionModal]);
-
-  const handleAddQuestion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddingQuestion(true);
-    setQuestionError("");
-    setQuestionSuccess("");
+  const fetchMatch = async () => {
+    if (!session?.user || session.user.role !== "ADMIN") return
+    
+    setLoading(true)
     try {
-      const res = await fetch(`/api/admin/matches/${matchId}/questions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: questionForm.question,
-          questionType: questionForm.questionType,
-          options: questionForm.questionType === "MULTIPLE_CHOICE" ? questionForm.options.filter(opt => opt.trim() !== "") : [],
-          points: questionForm.points
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Soru eklenemedi");
-      setQuestionSuccess("Soru eklendi!");
-      setShowQuestionModal(false);
-      setQuestionForm({ question: "", questionType: "MULTIPLE_CHOICE", options: [""], points: 10 });
-      // Soruları tekrar yükle
-      const res2 = await fetch(`/api/admin/matches/${matchId}/details`);
-      const data2 = await res2.json();
-      if (res2.ok) setMatch(data2.match);
-    } catch (err: any) {
-      setQuestionError(err.message || "Soru eklenirken hata oluştu");
+      const response = await fetch(`/api/matches/${matchId}`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Maç bulunamadı")
+      }
+      const data = await response.json()
+      setMatch(data.match)
+      setScoreForm({
+        homeScore: data.match.homeScore?.toString() || "",
+        awayScore: data.match.awayScore?.toString() || ""
+      })
+    } catch (error: any) {
+      setError(error.message || "Maç yüklenirken hata oluştu")
     } finally {
-      setAddingQuestion(false);
+      setLoading(false)
     }
-  };
+  }
 
-  const openEditQuestionModal = (q: any) => {
-    setEditingQuestion(q);
-    setEditQuestionForm({
-      question: q.question,
-      questionType: q.questionType,
-      options: q.options || [""],
-      points: q.points,
-      correctAnswer: q.correctAnswer || ""
-    });
-    setEditQuestionError("");
-    setEditQuestionSuccess("");
-    setShowEditQuestionModal(true);
-  };
-
-  const handleEditQuestion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingQuestion) return;
-    setUpdatingQuestion(true);
-    setEditQuestionError("");
-    setEditQuestionSuccess("");
+  const handleUpdateScore = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setUpdatingScore(true)
+    setError("")
+    
     try {
-      const res = await fetch(`/api/admin/matches/${matchId}/questions`, {
+      const response = await fetch(`/api/matches`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          questionId: editingQuestion.id,
-          ...editQuestionForm,
-          options: editQuestionForm.questionType === "MULTIPLE_CHOICE" ? editQuestionForm.options.filter(opt => opt.trim() !== "") : [],
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Soru güncellenemedi");
-      setEditQuestionSuccess("Soru güncellendi!");
-      setShowEditQuestionModal(false);
-      // Soruları tekrar yükle
-      const res2 = await fetch(`/api/admin/matches/${matchId}/details`);
-      const data2 = await res2.json();
-      if (res2.ok) setMatch(data2.match);
-    } catch (err: any) {
-      setEditQuestionError(err.message || "Soru güncellenirken hata oluştu");
+          id: matchId,
+          homeScore: scoreForm.homeScore,
+          awayScore: scoreForm.awayScore
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Skor güncellenemedi")
+      }
+      
+      await fetchMatch()
+    } catch (error: any) {
+      setError(error.message || "Skor güncellenirken hata oluştu")
     } finally {
-      setUpdatingQuestion(false);
+      setUpdatingScore(false)
     }
-  };
+  }
 
-  const handleDeleteQuestion = async (questionId: string) => {
-    if (!confirm("Bu soruyu silmek istediğinizden emin misiniz?")) return;
+  const handleDebugPoints = async () => {
     try {
-      const res = await fetch(`/api/admin/questions/${questionId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Soru silinemedi");
-      // Soruları tekrar yükle
-      const res2 = await fetch(`/api/admin/matches/${matchId}/details`);
-      const data2 = await res2.json();
-      if (res2.ok) setMatch(data2.match);
-    } catch (err) {
-      alert("Soru silinirken hata oluştu");
+      const response = await fetch(`/api/debug-points?matchId=${matchId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setDebugData(data)
+        setShowDebug(true)
+      }
+    } catch (error) {
+      console.error('Error debugging points:', error)
     }
-  };
+  }
 
-  if (loading) {
+  const handleRecalculatePoints = async () => {
+    try {
+      const response = await fetch(`/api/debug-points?matchId=${matchId}`, {
+        method: 'POST'
+      })
+      if (response.ok) {
+        await fetchMatch()
+        alert('Puanlar yeniden hesaplandı!')
+      }
+    } catch (error) {
+      console.error('Error recalculating points:', error)
+    }
+  }
+
+  const getStatusText = (match: MatchDetail) => {
+    if (match.isFinished) return "Bitti"
+    if (new Date(match.matchDate) > new Date()) return "Bekliyor"
+    return "Devam Ediyor"
+  }
+
+  const getStatusColor = (match: MatchDetail) => {
+    if (match.isFinished) return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+    if (new Date(match.matchDate) > new Date()) return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+    return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+  }
+
+  // Loading state
+  if (status === "loading" || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600 dark:text-gray-400">Yükleniyor...</p>
         </div>
       </div>
-    );
+    )
   }
-  if (error) {
+
+  // Authentication check
+  if (!session?.user || session.user.role !== "ADMIN") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+            Yetkisiz Erişim
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Bu sayfaya erişim yetkiniz bulunmamaktadır.
+          </p>
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+          >
+            Giriş Yap
+          </Link>
         </div>
       </div>
-    );
+    )
   }
-  if (!match) return null;
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto px-4 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-              Maç Detayı
+  if (error || !match) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-4xl mx-auto py-8 px-4">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              {error || "Maç bulunamadı"}
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
-              {match.season?.name} &bull; {match.weekNumber}. Hafta
-            </p>
-          </div>
-          <Link href="/admin/matches" className="text-blue-600 dark:text-blue-400 hover:underline text-sm">Maç Listesi</Link>
-        </div>
+            <Link
+              href="/admin/matches"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            >
+              Maç Listesine Dön
+            </Link>
+                  </div>
+      </div>
 
-        {/* Maç Bilgileri */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex-1 flex flex-col md:flex-row md:items-center md:gap-8">
-              <div className="text-center md:text-right flex-1">
-                <div className="font-bold text-lg text-gray-900 dark:text-white">{match.homeTeam}</div>
-              </div>
-              <div className="flex flex-col items-center justify-center">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{new Date(match.matchDate).toLocaleString("tr-TR")}</div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {match.homeScore !== null && match.awayScore !== null ? `${match.homeScore} - ${match.awayScore}` : "-"}
-                </div>
-                <div className="mt-1">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${match.isFinished ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" : "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"}`}>
-                    {match.isFinished ? "Bitti" : "Bekliyor"}
-                  </span>
-                </div>
-              </div>
-              <div className="text-center md:text-left flex-1">
-                <div className="font-bold text-lg text-gray-900 dark:text-white">{match.awayTeam}</div>
-              </div>
+      {/* Debug Modal */}
+      {showDebug && debugData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                Puan Kontrolü - {debugData.match.homeTeam} vs {debugData.match.awayTeam}
+              </h2>
+              <button
+                onClick={() => setShowDebug(false)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                ✕
+              </button>
             </div>
-          </div>
-        </div>
 
-        {/* Tahminler */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Kullanıcı Tahminleri</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Kullanıcı</th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tahmin</th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Puan</th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tarih</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {match.predictions.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-center py-4 text-gray-500 dark:text-gray-400">Henüz tahmin yok.</td>
-                  </tr>
-                ) : (
-                  match.predictions.map((p: any) => (
-                    <tr key={p.id}>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">{p.user?.name || p.user?.email}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-center text-sm text-gray-900 dark:text-white">{p.homeScore} - {p.awayScore}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-center text-sm font-semibold {p.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}">{p.points}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-center text-xs text-gray-500 dark:text-gray-400">{new Date(p.createdAt).toLocaleString("tr-TR")}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <div className="space-y-6">
+              {/* Maç Bilgileri */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Maç Bilgileri</h3>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                  <p><strong>Skor:</strong> {debugData.match.homeScore} - {debugData.match.awayScore}</p>
+                  <p><strong>Kazanan:</strong> {debugData.match.actualWinner}</p>
+                  <p><strong>Toplam Tahmin:</strong> {debugData.summary.totalPredictions}</p>
+                  <p><strong>Doğru Hesaplanan:</strong> {debugData.summary.correctPredictions}</p>
+                  <p><strong>Yanlış Hesaplanan:</strong> {debugData.summary.incorrectPredictions}</p>
+                </div>
+              </div>
 
-        {/* Özel Sorular */}
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Özel Sorular</h2>
-          <button
-            onClick={() => setShowQuestionModal(true)}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-          >
-            + Soru Ekle
-          </button>
-        </div>
-        {match.questions && match.questions.length > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-            {match.questions.map((q: any) => (
-              <div key={q.id} className="mb-4">
-                <div className="font-medium text-gray-800 dark:text-gray-200 mb-1 flex items-center justify-between">
-                  <span>{q.question}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => openEditQuestionModal(q)} className="text-yellow-600 hover:text-yellow-800 text-xs">Düzenle</button>
-                    <button onClick={() => handleDeleteQuestion(q.id)} className="text-red-600 hover:text-red-800 text-xs">Sil</button>
+              {/* Tahmin Analizi */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Tahmin Analizi</h3>
+                <div className="space-y-2">
+                  {debugData.predictionAnalysis.map((pred: any, index: number) => (
+                    <div key={index} className={`border rounded p-3 ${pred.isCorrect ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium">{pred.user.name || pred.user.email}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Tahmin: {pred.prediction} | Gerçek: {pred.actualScore}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Mevcut Puan: {pred.currentPoints} | Beklenen: {pred.expectedPoints}
+                          </p>
+                        </div>
+                        <span className={`text-sm font-medium ${pred.isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+                          {pred.isCorrect ? '✓ Doğru' : '✗ Yanlış'}
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-xs text-gray-500">Analiz:</p>
+                        <ul className="text-xs text-gray-600 dark:text-gray-400">
+                          {pred.analysis.map((item: string, i: number) => (
+                            <li key={i}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Özel Soru Analizi */}
+              {debugData.questionAnalysis.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Özel Soru Analizi</h3>
+                  <div className="space-y-3">
+                    {debugData.questionAnalysis.map((question: any, index: number) => (
+                      <div key={index} className="border rounded p-3">
+                        <p className="font-medium mb-2">{question.question}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          Doğru Cevap: {question.correctAnswer} | Puan: {question.points}
+                        </p>
+                        <div className="space-y-1">
+                          {question.answers.map((answer: any, aIndex: number) => (
+                            <div key={aIndex} className={`text-sm p-2 rounded ${answer.isCorrect ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-700'}`}>
+                              <p>{answer.user.name || answer.user.email}: {answer.answer}</p>
+                              <p className="text-xs text-gray-500">
+                                Mevcut: {answer.currentPoints} | Beklenen: {answer.expectedPoints}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tip: {q.questionType}, Puan: {q.points}</div>
-                {q.options && q.options.length > 0 && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Seçenekler: {q.options.join(", ")}</div>
-                )}
-                {q.correctAnswer && (
-                  <div className="text-xs text-green-700 dark:text-green-400">Doğru Cevap: {q.correctAnswer}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* İstatistikler */}
-        {stats && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">İstatistikler</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-4 text-center">
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{stats.totalPredictions}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Toplam Tahmin</div>
-              </div>
-              <div className="bg-green-50 dark:bg-green-900/20 rounded p-4 text-center">
-                <div className="text-2xl font-bold text-green-700 dark:text-green-400">{stats.correctScore}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Doğru Skor</div>
-              </div>
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded p-4 text-center">
-                <div className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">{stats.correctWinner}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Doğru Sonuç (Kazanan)</div>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Skor Dağılımı</h3>
-              <div className="flex flex-wrap gap-2">
-                {stats.scoreDistribution.map((s: any) => (
-                  <span key={s.score} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
-                    {s.score} <span className="ml-1 text-blue-600 dark:text-blue-400">({s.count})</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Soru ekleme modalı */}
-      {showQuestionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div ref={questionModalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-full max-w-lg relative">
-            <button
-              onClick={() => setShowQuestionModal(false)}
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              aria-label="Kapat"
-            >
-              ×
-            </button>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Özel Soru Ekle</h3>
-            <form onSubmit={handleAddQuestion} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Soru Metni</label>
-                <input
-                  type="text"
-                  required
-                  value={questionForm.question}
-                  onChange={e => setQuestionForm({ ...questionForm, question: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                  placeholder="Örn: İlk golü kim atar?"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Soru Tipi</label>
-                <select
-                  value={questionForm.questionType}
-                  onChange={e => setQuestionForm({ ...questionForm, questionType: e.target.value, options: e.target.value === "MULTIPLE_CHOICE" ? ["", ""] : [] })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                >
-                  <option value="MULTIPLE_CHOICE">Çoktan Seçmeli</option>
-                  <option value="YES_NO">Evet/Hayır</option>
-                  <option value="TEXT">Metin</option>
-                </select>
-              </div>
-              {questionForm.questionType === "MULTIPLE_CHOICE" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seçenekler</label>
-                  {questionForm.options.map((opt, idx) => (
-                    <div key={idx} className="flex items-center gap-2 mb-1">
-                      <input
-                        type="text"
-                        value={opt}
-                        onChange={e => setQuestionForm({ ...questionForm, options: questionForm.options.map((o, i) => i === idx ? e.target.value : o) })}
-                        className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                        placeholder={`Seçenek ${idx + 1}`}
-                      />
-                      <button type="button" onClick={() => setQuestionForm({ ...questionForm, options: questionForm.options.filter((_, i) => i !== idx) })} className="text-red-500 hover:text-red-700">×</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setQuestionForm({ ...questionForm, options: [...questionForm.options, ""] })} className="text-blue-600 hover:underline text-sm mt-1">+ Seçenek Ekle</button>
-                </div>
               )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Puan</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={questionForm.points}
-                  onChange={e => setQuestionForm({ ...questionForm, points: parseInt(e.target.value) })}
-                  className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-              {questionError && <div className="p-2 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded text-sm">{questionError}</div>}
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowQuestionModal(false)} className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600">İptal</button>
-                <button type="submit" className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" disabled={addingQuestion}>{addingQuestion ? "Ekleniyor..." : "Ekle"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* Soru düzenle modalı */}
-      {showEditQuestionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div ref={editQuestionModalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-full max-w-lg relative">
-            <button
-              onClick={() => setShowEditQuestionModal(false)}
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              aria-label="Kapat"
-            >
-              ×
-            </button>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Soruyu Düzenle</h3>
-            <form onSubmit={handleEditQuestion} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Soru Metni</label>
-                <input
-                  type="text"
-                  required
-                  value={editQuestionForm.question}
-                  onChange={e => setEditQuestionForm({ ...editQuestionForm, question: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Soru Tipi</label>
-                <select
-                  value={editQuestionForm.questionType}
-                  onChange={e => setEditQuestionForm({ ...editQuestionForm, questionType: e.target.value, options: e.target.value === "MULTIPLE_CHOICE" ? ["", ""] : [] })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                >
-                  <option value="MULTIPLE_CHOICE">Çoktan Seçmeli</option>
-                  <option value="YES_NO">Evet/Hayır</option>
-                  <option value="TEXT">Metin</option>
-                </select>
-              </div>
-              {editQuestionForm.questionType === "MULTIPLE_CHOICE" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seçenekler</label>
-                  {editQuestionForm.options.map((opt, idx) => (
-                    <div key={idx} className="flex items-center gap-2 mb-1">
-                      <input
-                        type="text"
-                        value={opt}
-                        onChange={e => setEditQuestionForm({ ...editQuestionForm, options: editQuestionForm.options.map((o, i) => i === idx ? e.target.value : o) })}
-                        className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                        placeholder={`Seçenek ${idx + 1}`}
-                      />
-                      <button type="button" onClick={() => setEditQuestionForm({ ...editQuestionForm, options: editQuestionForm.options.filter((_, i) => i !== idx) })} className="text-red-500 hover:text-red-700">×</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setEditQuestionForm({ ...editQuestionForm, options: [...editQuestionForm.options, ""] })} className="text-blue-600 hover:underline text-sm mt-1">+ Seçenek Ekle</button>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Puan</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={editQuestionForm.points}
-                  onChange={e => setEditQuestionForm({ ...editQuestionForm, points: parseInt(e.target.value) })}
-                  className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-              {/* Doğru cevap alanı */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Doğru Cevap</label>
-                {editQuestionForm.questionType === "MULTIPLE_CHOICE" && (
-                  <select
-                    value={editQuestionForm.correctAnswer}
-                    onChange={e => setEditQuestionForm({ ...editQuestionForm, correctAnswer: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                  >
-                    <option value="">Seçiniz</option>
-                    {editQuestionForm.options.filter(opt => opt.trim() !== "").map((opt, idx) => (
-                      <option key={idx} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                )}
-                {editQuestionForm.questionType === "YES_NO" && (
-                  <select
-                    value={editQuestionForm.correctAnswer}
-                    onChange={e => setEditQuestionForm({ ...editQuestionForm, correctAnswer: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                  >
-                    <option value="">Seçiniz</option>
-                    <option value="Evet">Evet</option>
-                    <option value="Hayır">Hayır</option>
-                  </select>
-                )}
-                {editQuestionForm.questionType === "TEXT" && (
-                  <input
-                    type="text"
-                    value={editQuestionForm.correctAnswer}
-                    onChange={e => setEditQuestionForm({ ...editQuestionForm, correctAnswer: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                    placeholder="Doğru cevabı girin"
-                  />
-                )}
-              </div>
-              {editQuestionError && <div className="p-2 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded text-sm">{editQuestionError}</div>}
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowEditQuestionModal(false)} className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600">İptal</button>
-                <button type="submit" className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" disabled={updatingQuestion}>{updatingQuestion ? "Güncelleniyor..." : "Kaydet"}</button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
+}
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Maç Detayı
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              {match.homeTeam} vs {match.awayTeam}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              href="/admin/matches"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700"
+            >
+              Maç Listesi
+            </Link>
+            <Link
+              href="/admin"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700"
+            >
+              Admin Paneli
+            </Link>
+            {match.isFinished && (
+              <div className="flex gap-2">
+                <CommonButton
+                  type="button"
+                  color="gray"
+                  size="sm"
+                  onClick={handleDebugPoints}
+                >
+                  Puanları Kontrol Et
+                </CommonButton>
+                <CommonButton
+                  type="button"
+                  color="blue"
+                  size="sm"
+                  onClick={handleRecalculatePoints}
+                >
+                  Puanları Yeniden Hesapla
+                </CommonButton>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Sol Kolon - Maç Bilgileri */}
+          <div className="space-y-6">
+            {/* Maç Bilgileri */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Maç Bilgileri</h2>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Takımlar:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {match.homeTeam} vs {match.awayTeam}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Tarih:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {formatDate(match.matchDate)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Hafta:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {match.weekNumber}. Hafta
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Sezon:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {match.season.name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Durum:</span>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(match)}`}>
+                    {getStatusText(match)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Skor Güncelleme */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Skor Güncelle</h2>
+              <form onSubmit={handleUpdateScore} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {match.homeTeam} Skor
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={scoreForm.homeScore}
+                      onChange={e => setScoreForm({ ...scoreForm, homeScore: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {match.awayTeam} Skor
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={scoreForm.awayScore}
+                      onChange={e => setScoreForm({ ...scoreForm, awayScore: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <CommonButton
+                  type="submit"
+                  color="blue"
+                  disabled={updatingScore}
+                >
+                  {updatingScore ? "Güncelleniyor..." : "Skoru Güncelle"}
+                </CommonButton>
+              </form>
+            </div>
+
+            {/* Özel Sorular */}
+            {match.questions && match.questions.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Özel Sorular</h2>
+                <div className="space-y-4">
+                  {match.questions.map((question, index) => (
+                    <div key={question.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-medium text-gray-900 dark:text-white">
+                          Soru {index + 1}: {question.question}
+                        </h3>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          {question.points} puan
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Tip: {question.questionType === "MULTIPLE_CHOICE" ? "Çoktan Seçmeli" : 
+                              question.questionType === "YES_NO" ? "Evet/Hayır" : "Metin"}
+                      </div>
+                      {question.correctAnswer && (
+                        <div className="text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Doğru Cevap:</span>
+                          <span className="ml-2 font-medium text-green-600 dark:text-green-400">
+                            {question.correctAnswer}
+                          </span>
+                        </div>
+                      )}
+                      {question.questionAnswers && question.questionAnswers.length > 0 && (
+                        <div className="mt-3">
+                          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Cevaplar ({question.questionAnswers.length})
+                          </h4>
+                          <div className="space-y-1">
+                            {question.questionAnswers.slice(0, 3).map((answer) => (
+                              <div key={answer.id} className="text-xs text-gray-600 dark:text-gray-400">
+                                {answer.user.name}: {answer.answer} ({answer.points} puan)
+                              </div>
+                            ))}
+                            {question.questionAnswers.length > 3 && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                ... ve {question.questionAnswers.length - 3} cevap daha
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sağ Kolon - Tahminler */}
+          <div className="space-y-6">
+            {/* Tahmin İstatistikleri */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Tahmin İstatistikleri</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {match.predictions.length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Toplam Tahmin</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {match.predictions.filter(p => p.points > 0).length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Puan Alan</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tahmin Listesi */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Tahminler</h2>
+                <input
+                  type="text"
+                  placeholder="Kullanıcı ara..."
+                  value={predictionSearch}
+                  onChange={e => setPredictionSearch(e.target.value)}
+                  className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {match.predictions.length === 0 ? (
+                  <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                    Henüz tahmin yapılmamış
+                  </p>
+                ) : (
+                  match.predictions
+                    .filter(prediction => 
+                      predictionSearch === "" || 
+                      prediction.user.name?.toLowerCase().includes(predictionSearch.toLowerCase()) ||
+                      prediction.user.email?.toLowerCase().includes(predictionSearch.toLowerCase())
+                    )
+                    .map((prediction) => (
+                    <div key={prediction.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {prediction.user.name || prediction.user.email}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          Tahmin: <span className="font-medium">{prediction.homeScore} - {prediction.awayScore}</span>
+                        </div>
+                        {prediction.user.email && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {prediction.user.email}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {new Date(prediction.createdAt).toLocaleString('tr-TR')}
+                        </div>
+                      </div>
+                                              <div className="text-right">
+                          <div className={`font-bold ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {prediction.points} puan
+                          </div>
+                          <div className={`text-xs font-medium ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {prediction.points > 0 ? '✓ Doğru' : '✗ Yanlış'}
+                          </div>
+                        </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 } 

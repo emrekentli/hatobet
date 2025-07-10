@@ -1,195 +1,195 @@
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
-import { z } from "zod"
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
-const createPredictionSchema = z.object({
-  matchId: z.string().min(1, "Maç ID gereklidir"),
-  homeScore: z.number().int().min(0, "Ev sahibi skoru 0'dan küçük olamaz"),
-  awayScore: z.number().int().min(0, "Deplasman skoru 0'dan küçük olamaz"),
-})
-
-// Tahmin oluştur
-export async function POST(request: NextRequest) {
-  try {
-    // Kullanıcı girişi kontrolü
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json(
-        { error: "Giriş yapmanız gerekiyor" },
-        { status: 401 }
-      )
-    }
-
-    const body = await request.json()
-    const { matchId, homeScore, awayScore } = createPredictionSchema.parse(body)
-
-    // Maçı kontrol et
-    const match = await prisma.match.findUnique({
-      where: { id: matchId },
-      include: { season: true }
-    })
-
-    if (!match) {
-      return NextResponse.json(
-        { error: "Maç bulunamadı" },
-        { status: 404 }
-      )
-    }
-
-    // Maç başlamış mı kontrol et
-    if (new Date(match.matchDate) <= new Date()) {
-      return NextResponse.json(
-        { error: "Maç başladıktan sonra tahmin yapılamaz" },
-        { status: 400 }
-      )
-    }
-
-    // Kullanıcıyı bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email! }
-    })
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Kullanıcı bulunamadı" },
-        { status: 404 }
-      )
-    }
-
-    // Kullanıcının bu maç için daha önce tahmin yapmış mı kontrol et
-    const existingPrediction = await prisma.prediction.findFirst({
-      where: {
-        userId: user.id,
-        matchId: matchId
-      }
-    })
-
-    // Kazananı hesapla
-    const winner: "HOME" | "AWAY" | "DRAW" = homeScore > awayScore ? "HOME" : awayScore > homeScore ? "AWAY" : "DRAW"
-
-    let prediction
-    if (existingPrediction) {
-      // Mevcut tahmini güncelle
-      prediction = await prisma.prediction.update({
-        where: { id: existingPrediction.id },
-        data: {
-          homeScore,
-          awayScore,
-          winner,
-          points: 0, // Maç bitiminde hesaplanacak
-        }
-      })
-    } else {
-      // Yeni tahmin oluştur
-      prediction = await prisma.prediction.create({
-        data: {
-          userId: user.id,
-          matchId: matchId,
-          homeScore,
-          awayScore,
-          winner,
-          points: 0, // Maç bitiminde hesaplanacak
-        }
-      })
-    }
-
-    return NextResponse.json({
-      prediction,
-      message: existingPrediction ? "Tahmin başarıyla güncellendi" : "Tahmin başarıyla kaydedildi"
-    })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Geçersiz veri formatı" },
-        { status: 400 }
-      )
-    }
-
-    console.error("Create prediction error:", error)
-    return NextResponse.json(
-      { error: "Sunucu hatası" },
-      { status: 500 }
-    )
-  }
-}
-
-// Kullanıcının tahminlerini getir
 export async function GET(request: NextRequest) {
-  try {
-    // Kullanıcı girişi kontrolü
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json(
-        { error: "Giriş yapmanız gerekiyor" },
-        { status: 401 }
-      )
-    }
-
-    const { searchParams } = new URL(request.url)
-    const matchId = searchParams.get("matchId")
-    const seasonId = searchParams.get("seasonId")
-
-    // Kullanıcıyı bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email! }
-    })
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Kullanıcı bulunamadı" },
-        { status: 404 }
-      )
-    }
-
-    const where: any = {
-      userId: user.id
-    }
-    
-    if (matchId) {
-      where.matchId = matchId
-    }
-    
-    if (seasonId) {
-      where.match = {
-        seasonId: seasonId
+      try {
+      const session = await auth();
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
+
+    const { searchParams } = new URL(request.url);
+    let userId = searchParams.get("userId");
+    const matchId = searchParams.get("matchId");
+    const week = searchParams.get("week");
+
+    const where: any = {};
+
+    // Kullanıcı ID'sini ayarla
+    if (userId) {
+      where.userId = userId;
+    } else {
+      where.userId = session?.user?.id;
+    }
+
+    if (matchId) {
+      where.matchId = matchId;
+    }
+
+    // Week parametresi varsa, o haftadaki maçların tahminlerini getir
+    if (week) {
+      const weekNumber = parseInt(week);
+      where.match = {
+        weekNumber: weekNumber
+      };
     }
 
     const predictions = await prisma.prediction.findMany({
       where,
       include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         match: {
           select: {
             id: true,
             homeTeam: true,
             awayTeam: true,
-            matchDate: true,
-            weekNumber: true,
             homeScore: true,
             awayScore: true,
             isFinished: true,
-            season: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        }
+            weekNumber: true,
+          },
+        },
       },
-      orderBy: [
-        { match: { weekNumber: "asc" } },
-        { match: { matchDate: "asc" } }
-      ]
-    })
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-    return NextResponse.json({ predictions })
+    return NextResponse.json({ predictions });
   } catch (error) {
-    console.error("Get predictions error:", error)
-    return NextResponse.json(
-      { error: "Sunucu hatası" },
-      { status: 500 }
-    )
+    console.error("Error fetching predictions:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { matchId, homeScore, awayScore } = body;
+
+    if (!matchId || homeScore === undefined || awayScore === undefined) {
+      return NextResponse.json({ error: "Match ID, home score, and away score are required" }, { status: 400 });
+    }
+
+    // Check if match exists and is still active
+    const match = await prisma.match.findUnique({
+      where: { id: matchId },
+    });
+
+    if (!match) {
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
+    }
+    if(new Date(match.matchDate) <= new Date()){
+      return NextResponse.json({ error: "Match is started, cannot submit prediction" }, { status: 400 });
+    }
+    if (match.isFinished) {
+      return NextResponse.json({ error: "Match is finished, cannot submit prediction" }, { status: 400 });
+    }
+
+    // Check if user already has a prediction for this match
+    const existingPrediction = await prisma.prediction.findUnique({
+      where: {
+        userId_matchId: {
+          userId: session.user.id,
+          matchId: matchId,
+        },
+      },
+    });
+
+    let winner: "HOME" | "AWAY" | "DRAW";
+    if (homeScore > awayScore) {
+      winner = "HOME";
+    } else if (awayScore > homeScore) {
+      winner = "AWAY";
+    } else {
+      winner = "DRAW";
+    }
+
+    if (existingPrediction) {
+      // Update existing prediction
+      const updatedPrediction = await prisma.prediction.update({
+        where: {
+          userId_matchId: {
+            userId: session.user.id,
+            matchId: matchId,
+          },
+        },
+        data: {
+          homeScore: parseInt(homeScore),
+          awayScore: parseInt(awayScore),
+          winner,
+          points: 0, // Will be calculated when match ends
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          match: {
+            select: {
+              id: true,
+              homeTeam: true,
+              awayTeam: true,
+              homeScore: true,
+              awayScore: true,
+              isFinished: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json({ success: true, prediction: updatedPrediction });
+    } else {
+      // Create new prediction
+      const newPrediction = await prisma.prediction.create({
+        data: {
+          userId: session.user.id,
+          matchId: matchId,
+          homeScore: parseInt(homeScore),
+          awayScore: parseInt(awayScore),
+          winner,
+          points: 0, // Will be calculated when match ends
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          match: {
+            select: {
+              id: true,
+              homeTeam: true,
+              awayTeam: true,
+              homeScore: true,
+              awayScore: true,
+              isFinished: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json({ success: true, prediction: newPrediction });
+    }
+  } catch (error) {
+    console.error("Error creating/updating prediction:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 } 
