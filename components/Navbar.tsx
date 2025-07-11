@@ -58,9 +58,12 @@ export default function Navbar() {
               <>
                 {/* Desktop Kullanıcı Bilgileri */}
                 <div className="hidden md:flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  <Link
+                    href="/profile"
+                    className="text-sm font-medium text-gray-900 dark:text-white hover:underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
                     {session.user?.name || session.user?.email}
-                  </span>
+                  </Link>
                   <button
                     onClick={handleSignOut}
                     className="text-sm text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 font-medium transition-colors duration-200"
@@ -126,9 +129,13 @@ export default function Navbar() {
                 <>
                   <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
                     <div className="px-3 py-2">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                      <Link
+                        href="/profile"
+                        className="text-sm font-medium text-gray-900 dark:text-white hover:underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
                         {session.user?.name || session.user?.email}
-                      </div>
+                      </Link>
                     </div>
                     <button
                       onClick={() => {
