@@ -42,6 +42,12 @@ export default function Navbar() {
             >
               Sıralama
             </Link>
+            <Link 
+              href="/timed-questions" 
+              className="text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors duration-200"
+            >
+              Zamanlı Sorular
+            </Link>
             {isAdmin && (
               <Link 
                 href="/admin" 
@@ -114,6 +120,13 @@ export default function Navbar() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Sıralama
+              </Link>
+              <Link 
+                href="/timed-questions" 
+                className="block px-3 py-2 text-base font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Zamanlı Sorular
               </Link>
               {isAdmin && (
                 <Link 

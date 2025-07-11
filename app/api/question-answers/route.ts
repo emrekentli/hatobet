@@ -17,7 +17,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Question ID and answer are required" }, { status: 400 });
     }
 
-    // Check if user already answered this question
+    // Get the question to check if it's still active and deadline
+    const question = await prisma.question.findUnique({
+      where: { id: questionId },
+      select: { id: true, deadline: true, isActive: true },
+    });
+
+    if (!question || !question.isActive) {
+      return NextResponse.json({ error: "Question not found or inactive" }, { status: 404 });
+    }
+
+    // Deadline kontrolü
+    if (question.deadline && new Date(question.deadline) < new Date()) {
+      return NextResponse.json({ error: "Süreniz doldu, cevap değiştirilemez" }, { status: 400 });
+    }
+
+    // Cevap var mı kontrol et
     const existingAnswer = await prisma.questionAnswer.findUnique({
       where: {
         userId_questionId: {
@@ -27,89 +42,80 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    let answerResult;
     if (existingAnswer) {
-      return NextResponse.json({ error: "You have already answered this question" }, { status: 400 });
-    }
-
-    // Get the question to check if it's still active
-    const question = await prisma.question.findUnique({
-      where: { id: questionId },
-      include: {
-        match: true,
-      },
-    });
-
-    if (!question || !question.isActive) {
-      return NextResponse.json({ error: "Question not found or inactive" }, { status: 404 });
-    }
-
-    // Check if match is still active (not finished)
-    if (question.match.isFinished) {
-      return NextResponse.json({ error: "Match is finished, cannot submit answer" }, { status: 400 });
-    }
-
-    // Create the answer
-    const newAnswer = await prisma.questionAnswer.create({
-      data: {
-        userId: session.user.id,
-        questionId: questionId,
-        answer: answer,
-        points: 0, // Will be calculated when match ends
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+      // Update
+      answerResult = await prisma.questionAnswer.update({
+        where: {
+          userId_questionId: {
+            userId: session.user.id,
+            questionId: questionId,
           },
         },
-        question: true,
-      },
-    });
+        data: { answer },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          question: true,
+        },
+      });
+    } else {
+      // Create
+      answerResult = await prisma.questionAnswer.create({
+        data: {
+          userId: session.user.id,
+          questionId: questionId,
+          answer: answer,
+          points: 0, // Will be calculated when match ends
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          question: true,
+        },
+      });
+    }
 
-    return NextResponse.json({ success: true, answer: newAnswer });
+    return NextResponse.json({ success: true, answer: answerResult });
   } catch (error) {
     console.error("Error submitting answer:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// GET - Get answers for a question (admin only)
+// GET - Get answers for a question (admin) veya birden fazla questionId için kullanıcının cevapları (user)
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const questionId = searchParams.get("questionId");
+    const questionIds = searchParams.get("questionIds"); // Virgülle ayrılmış id listesi
 
-    if (!questionId) {
-      return NextResponse.json({ error: "Question ID is required" }, { status: 400 });
+    // Admin: tek sorunun tüm cevapları
+    if (session?.user?.role === "ADMIN" && questionId) {
+      const answers = await prisma.questionAnswer.findMany({
+        where: { questionId },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          question: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      return NextResponse.json({ answers });
     }
 
-    const answers = await prisma.questionAnswer.findMany({
-      where: {
-        questionId: questionId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+    // User: birden fazla questionId için kendi cevapları
+    if (session?.user?.id && questionIds) {
+      const ids = questionIds.split(",").map((id) => id.trim()).filter(Boolean);
+      if (!ids.length) return NextResponse.json({ answers: [] });
+      const answers = await prisma.questionAnswer.findMany({
+        where: {
+          questionId: { in: ids },
+          userId: session.user.id,
         },
-        question: true,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+      });
+      return NextResponse.json({ answers });
+    }
 
-    return NextResponse.json({ answers });
+    return NextResponse.json({ error: "Unauthorized or missing params" }, { status: 401 });
   } catch (error) {
     console.error("Error fetching answers:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
