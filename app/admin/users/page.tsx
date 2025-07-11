@@ -86,6 +86,29 @@ export default function AdminUsersPage() {
     }
   }
 
+  // Kullanıcı silme fonksiyonu
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm("Bu kullanıcıyı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.")) return;
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(`/api/users?userId=${userId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.message || "Kullanıcı silinemedi");
+      }
+      setSuccess("Kullanıcı başarıyla silindi!");
+      fetchUsers();
+    } catch (error: any) {
+      setError(error.message || "Kullanıcı silinirken hata oluştu");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Authentication kontrolü
   if (status === "loading") {
     return (
@@ -301,6 +324,9 @@ export default function AdminUsersPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Kayıt Tarihi
                   </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    İşlem
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -352,6 +378,15 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                       {user.createdAt ? new Date(user.createdAt).toLocaleDateString('tr-TR') : "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <button
+                        onClick={() => user.id && handleDeleteUser(user.id)}
+                        disabled={!user.id}
+                        className="inline-flex items-center px-3 py-1 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 dark:bg-gray-800 dark:text-red-400 dark:border-red-400 dark:hover:bg-red-900/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Sil
+                      </button>
                     </td>
                   </tr>
                 ))}
