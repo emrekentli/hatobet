@@ -64,7 +64,7 @@ const savePrediction = async (prediction: any): Promise<boolean> => {
 };
 
 export default function HomePage() {
-const { data: session, status } = useSession()
+  const { data: session, status } = useSession();
   const [matches, setMatches] = useState<Match[]>([]);
   const [season, setSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,25 +89,42 @@ const { data: session, status } = useSession()
   const collapseAll = () => setOpenQuestions({});
   const toggleQuestions = (matchId: string) => setOpenQuestions((prev) => ({ ...prev, [matchId]: !prev[matchId] }));
 
-  // Load data from API
+  // Handle unauthenticated users
+  if (status !== "authenticated") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="max-w-md mx-auto p-8 bg-white dark:bg-gray-800 rounded-lg shadow text-center">
+          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Merhaba!</h2>
+          <p className="text-gray-700 dark:text-gray-300 mb-6">
+            HatoBet uygulamasına hoş geldiniz! Bu platformda hafta bazında maç skorları tahminleri yapabilir ve skor tahminlerinizi puanlayabilirsiniz. Lütfen giriş yaparak tahminlerinizi yapın ve sıralamaya katılın.
+          </p>
+          <a
+            href="/auth/login"
+            className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+          >
+            Giriş Yap
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // If the user is authenticated, load match data and continue normal logic
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        // İlk yüklemede week query'si gönderme, API aktif haftayı bulsun
         const url = selectedWeek === 0 ? '/api/matches' : `/api/matches?week=${selectedWeek}`;
         const response = await fetch(url);
         const data = await response.json();
         setMatches((data.matches || []).map(mapMatchData));
         setAvailableWeeks(data.availableWeeks || []);
         setActiveWeek(data.activeWeek || 1);
-        
-        // İlk yüklemede API'den gelen currentWeek'i seç
+
         if (selectedWeek === 0) {
           setSelectedWeek(data.currentWeek || 1);
         }
-        
-        // Set season info from API data
+
         if (data.currentSeason) {
           setSeason({
             id: data.currentSeason.id,
@@ -116,7 +133,6 @@ const { data: session, status } = useSession()
             totalWeeks: data.currentSeason.totalWeeks || data.availableWeeks?.length || 34
           });
         } else {
-          // Fallback season info
           setSeason({
             id: "default",
             name: "Aktif Sezon",
@@ -124,14 +140,14 @@ const { data: session, status } = useSession()
             totalWeeks: data.availableWeeks?.length || 34
           });
         }
-        
+
         setLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
         setLoading(false);
       }
     };
-    
+
     loadData();
   }, [selectedWeek]);
 
@@ -140,7 +156,6 @@ const { data: session, status } = useSession()
     const loadPredictions = async () => {
       if (selectedWeek > 0) {
         const userPredictions = await fetchUserPredictions(selectedWeek);
-        // Convert predictions to the format expected by the UI
         const predictionsMap: { [key: string]: any } = {};
         userPredictions.forEach((pred: any) => {
           predictionsMap[pred.matchId] = {
@@ -153,11 +168,11 @@ const { data: session, status } = useSession()
         setPredictions(predictionsMap);
       }
     };
-    
+
     loadPredictions();
   }, [selectedWeek]);
 
-  // Tahmin gönderme
+  // Handle prediction submission
   const handleMakePrediction = async (matchId: string) => {
     const matchPrediction = predictions[matchId];
     if (
@@ -169,9 +184,9 @@ const { data: session, status } = useSession()
       alert("Lütfen her iki skoru da girin");
       return;
     }
-    
+
     setPredicting(matchId);
-    
+
     try {
       const predictionData = {
         matchId: matchId,
@@ -179,14 +194,13 @@ const { data: session, status } = useSession()
         awayScore: parseInt(matchPrediction.awayScore.toString()),
         specialAnswers: {} // Will be handled separately
       };
-      
+
       const success = await savePrediction(predictionData);
-      
+
       if (success) {
         setSuccessStates((prev) => ({ ...prev, [matchId]: true }));
         setTimeout(() => setSuccessStates((prev) => ({ ...prev, [matchId]: false })), 2000);
-        
-        // Tahmin kaydedildikten sonra predictions listesini yenile
+
         const weekToFetch = selectedWeek === 0 ? 1 : selectedWeek;
         const updatedPredictions = await fetchUserPredictions(weekToFetch);
         const updatedPredictionsMap: { [key: string]: any } = {};
@@ -210,7 +224,7 @@ const { data: session, status } = useSession()
     }
   };
 
-  // Soruya cevap gönderme (gerçek API)
+  // Soruya cevap gönderme
   const handleAnswerQuestion = async (questionId: string, answer: string) => {
     if (!answer.trim()) return;
     setSubmittingAnswer((prev) => ({ ...prev, [questionId]: true }));
@@ -236,7 +250,7 @@ const { data: session, status } = useSession()
     }
   };
 
-  // Maç detay modalı için tahminleri yükle (gerçek API)
+  // Match modal and predictions
   const fetchMatchDetails = async (matchId: string) => {
     setLoadingPredictions(true);
     try {
@@ -255,7 +269,7 @@ const { data: session, status } = useSession()
     await fetchMatchDetails(match.id);
   };
 
-  // Maç durumu helpers
+  // Match status helpers
   const getMatchStatus = (match: Match) =>
     match.isFinished ? "Tamamlandı" : match.isActive ? "Devam Ediyor" : "Bekliyor";
   const getMatchStatusColor = (match: Match) =>
@@ -265,7 +279,6 @@ const { data: session, status } = useSession()
       ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
       : "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
 
-  // Yükleniyor durumu
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -277,31 +290,9 @@ const { data: session, status } = useSession()
     );
   }
 
-  // Kullanıcı giriş yapmamışsa bilgilendirici ekran
-  if (status !== "authenticated") {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="max-w-md mx-auto p-8 bg-white dark:bg-gray-800 rounded-lg shadow text-center">
-          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">HatoBet'e Hoş Geldiniz!</h2>
-          <p className="text-gray-700 dark:text-gray-300 mb-6">
-            Tahmin yapabilmek ve sıralamaya katılabilmek için lütfen giriş yapın.
-          </p>
-          <a
-            href="/auth/login"
-            className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
-          >
-            Giriş Yap
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  // Ana ekran
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Kullanıcı ve sezon bilgisi */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Merhaba{session?.user?.name ? `, ${session.user.name}` : ""}!</h2>
@@ -311,16 +302,13 @@ const { data: session, status } = useSession()
                 Toplam Hafta: <span className="font-semibold">{season.totalWeeks}</span>
               </div>
             )}
-              </div>
-          {/* Hafta seçici */}
+          </div>
           <WeekSelector
             selectedWeek={selectedWeek}
             availableWeeks={availableWeeks}
             onWeekChange={setSelectedWeek}
           />
-                              </div>
-                              
-        {/* Maçlar Tablosu */}
+        </div>
         <MatchTable
           session={session}
           matches={matches}
@@ -345,8 +333,6 @@ const { data: session, status } = useSession()
           formatDate={formatDate}
           handleAnswerQuestion={handleAnswerQuestion}
         />
-
-        {/* Maç detay modalı */}
         <PredictionModal
           session={session}
           showMatchModal={showMatchModal}
