@@ -130,8 +130,8 @@ export default function AdminMatchesPage() {
         seasonId: selectedSeasonId,
         homeScore: match.homeScore?.toString() || "",
         awayScore: match.awayScore?.toString() || "",
-        specialQuestions: match.questions?.map(q => ({
-          id: parseInt(q.id),
+        specialQuestions: match.questions?.map((q, idx) => ({
+          id: Number.isNaN(Number(q.id)) ? Date.now() + idx : Number(q.id),
           question: q.question,
           type: q.questionType as "TEXT" | "MULTIPLE_CHOICE" | "YES_NO",
           options: q.options || [],
