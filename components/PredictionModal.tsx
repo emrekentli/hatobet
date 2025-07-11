@@ -22,8 +22,8 @@ const PredictionModal: React.FC<PredictionModalProps> = ({
   if (!showMatchModal || !selectedMatch) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto relative">
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-40 flex justify-center overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-2xl mt-16 mb-16 max-h-[calc(100vh-8rem)] overflow-y-auto relative">
         <button
           onClick={() => setShowMatchModal(false)}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
@@ -63,7 +63,7 @@ const PredictionModal: React.FC<PredictionModalProps> = ({
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {matchPredictions.map((prediction, index) => (
-                      <tr key={index}>
+                      <tr key={prediction.id || prediction.userId || index}>
                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">{prediction.user.name || prediction.user.email}</td>
                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">{prediction.homeScore} - {prediction.awayScore}</td>
                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">

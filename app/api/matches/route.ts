@@ -210,10 +210,14 @@ export async function PUT(request: NextRequest) {
     // Skor güncellemesi
     let scoreUpdated = false;
     if (homeScore !== undefined && awayScore !== undefined) {
-      updateData.homeScore = parseInt(homeScore) || null;
-      updateData.awayScore = parseInt(awayScore) || null;
-      updateData.isFinished = true;
-      updateData.isActive = false;
+      const homeScoreNum = parseInt(homeScore);
+      const awayScoreNum = parseInt(awayScore);
+      updateData.homeScore = !isNaN(homeScoreNum) ? homeScoreNum : null;
+      updateData.awayScore = !isNaN(awayScoreNum) ? awayScoreNum : null;
+      if (!isNaN(homeScoreNum) && !isNaN(awayScoreNum)) {
+        updateData.isFinished = true;
+        updateData.isActive = false;
+      }
       scoreUpdated = true;
     }
 

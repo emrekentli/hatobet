@@ -18,6 +18,14 @@ interface SpecialQuestion {
   points: number
 }
 
+// UTC tarihini datetime-local input formatına çevirir
+function toDatetimeLocal(dateString: string) {
+  const date = new Date(dateString);
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
+
 export default function AdminMatchesPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -117,7 +125,7 @@ export default function AdminMatchesPage() {
       setFormData({
         homeTeam: match.homeTeam,
         awayTeam: match.awayTeam,
-        matchDate: match.matchDate.slice(0, 16),
+        matchDate: toDatetimeLocal(match.matchDate),
         weekNumber: match.weekNumber,
         seasonId: selectedSeasonId,
         homeScore: match.homeScore?.toString() || "",
@@ -648,7 +656,7 @@ export default function AdminMatchesPage() {
               </div>
               <div className="space-y-3">
                 {formData.specialQuestions.map((question, index) => (
-                  <div key={question.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+                  <div key={question.id || index} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         Soru {index + 1}
