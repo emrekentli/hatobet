@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
+import { formatDate } from "@/lib/utils";
 
 interface Match {
   id: string;
@@ -185,7 +186,7 @@ export default function MatchDetailPage() {
               {match.homeTeam} vs {match.awayTeam}
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              {format(new Date(match.matchDate), "dd MMMM yyyy HH:mm", { locale: tr })}
+              {formatDate(match.matchDate, "dd MMMM yyyy HH:mm")}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {match.season.name} - Hafta {match.weekNumber}

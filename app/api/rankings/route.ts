@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { getCurrentIstanbulDate } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,10 +30,10 @@ export async function GET(request: NextRequest) {
       currentSeason = await prisma.season.findFirst({});
     }
 
-    const now = new Date();
-    const seasonStart = currentSeason.startDate;
+    const now = getCurrentIstanbulDate();
+    const seasonStart = currentSeason!.startDate;
     const weeksSinceStart = Math.floor((now.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const currentWeek = Math.max(1, Math.min(currentSeason.totalWeeks, weeksSinceStart + 1));
+    const currentWeek = Math.max(1, Math.min(currentSeason!.totalWeeks, weeksSinceStart + 1));
     const selectedWeek = week || currentWeek;
 
     // Tüm sezonları getir
@@ -45,19 +46,19 @@ export async function GET(request: NextRequest) {
 
     if (type === 'week') {
       // Haftalık sıralama
-      rankings = await getWeeklyRankings(currentSeason.id, selectedWeek, search);
+      rankings = await getWeeklyRankings(currentSeason!.id, selectedWeek, search);
     } else {
       // Sezonluk sıralama
-      rankings = await getSeasonRankings(currentSeason.id, search);
+      rankings = await getSeasonRankings(currentSeason!.id, search);
     }
 
     // Mevcut haftaları getir
-    const availableWeeks = await getAvailableWeeks(currentSeason.id);
+    const availableWeeks = await getAvailableWeeks(currentSeason!.id);
 
     return NextResponse.json({
       rankings,
       seasons,
-      currentSeason: currentSeason.id,
+      currentSeason: currentSeason!.id,
       currentWeek,
       availableWeeks
     });

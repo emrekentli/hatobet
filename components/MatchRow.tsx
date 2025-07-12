@@ -1,6 +1,7 @@
 import React, { Fragment } from "react";
 import { Match, Question, QuestionAnswer } from "@/types/all-types";
 import SpecialQuestionItem from "./SpecialQuestionItem";
+import { getCurrentIstanbulDate } from "@/lib/utils";
 
 interface MatchRowProps {
   match: Match;
@@ -84,7 +85,7 @@ const MatchRow: React.FC<MatchRowProps> = ({
             </div>
           ) : !match.isActive ? (
             <div className="text-xs text-gray-500 dark:text-gray-400">Maç henüz aktif değil</div>
-          ) : new Date(match.matchDate) <= new Date() ? (
+          ) : new Date(match.matchDate) <= getCurrentIstanbulDate() ? (
             <div className="text-xs text-red-600 dark:text-red-400">Maç başladı, tahmin yapamazsınız</div>
           ) : (
             <div className="flex items-center space-x-2">

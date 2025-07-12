@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { toIstanbulTime, getCurrentIstanbulDate } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
         },
         data: {
           status: "FINISHED",
-          endDate: new Date(),
+          endDate: getCurrentIstanbulDate(),
         },
       });
     }
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     const newSeason = await prisma.season.create({
       data: {
         name,
-        startDate: new Date(startDate),
+        startDate: toIstanbulTime(startDate),
         endDate: null,
         status: body.status || "ACTIVE",
         totalWeeks: parseInt(totalWeeks),
@@ -112,13 +113,13 @@ export async function PUT(request: NextRequest) {
 
     const updateData: any = {};
     if (name) updateData.name = name;
-    if (startDate) updateData.startDate = new Date(startDate);
+    if (startDate) updateData.startDate = toIstanbulTime(startDate);
     if (totalWeeks) updateData.totalWeeks = parseInt(totalWeeks);
     if (status) updateData.status = status;
 
     // Handle status changes
     if (status === "FINISHED") {
-      updateData.endDate = new Date();
+      updateData.endDate = getCurrentIstanbulDate();
     } else if (status === "ACTIVE") {
       // Deactivate other active seasons
       await prisma.season.updateMany({
@@ -128,7 +129,7 @@ export async function PUT(request: NextRequest) {
         },
         data: {
           status: "FINISHED",
-          endDate: new Date(),
+          endDate: getCurrentIstanbulDate(),
         },
       });
     }
