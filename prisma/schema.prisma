@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "binary"
 }
 
@@ -65,8 +65,8 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   // NextAuth.js ilişkileri
-  accounts      Account[]
-  sessions      Session[]
+  accounts Account[]
+  sessions Session[]
 
   // HatoBet ilişkileri
   predictions     Prediction[]
@@ -85,14 +85,14 @@ enum UserRole {
 
 // Sezon modeli
 model Season {
-  id          String       @id @default(cuid())
-  name        String       // Sezon adı (örn: "2024-2025 Sezonu")
-  startDate   DateTime     // Sezon başlangıç tarihi
-  endDate     DateTime?    // Sezon bitiş tarihi
-  status      SeasonStatus @default(ACTIVE) // Sezon durumu
-  totalWeeks  Int          // Toplam hafta sayısı
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id         String       @id @default(cuid())
+  name       String // Sezon adı (örn: "2024-2025 Sezonu")
+  startDate  DateTime // Sezon başlangıç tarihi
+  endDate    DateTime? // Sezon bitiş tarihi
+  status     SeasonStatus @default(ACTIVE) // Sezon durumu
+  totalWeeks Int // Toplam hafta sayısı
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
   // İlişkiler
   matches      Match[]
@@ -104,28 +104,28 @@ model Season {
 
 // Sezon durumu enum
 enum SeasonStatus {
-  ACTIVE    // Aktif sezon
-  FINISHED  // Bitmiş sezon
+  ACTIVE // Aktif sezon
+  FINISHED // Bitmiş sezon
   CANCELLED // İptal edilmiş sezon
 }
 
 // Maç modeli (güncellenmiş)
 model Match {
-  id          String   @id @default(cuid())
-  seasonId    String   // Sezon ID'si
-  homeTeam    String   // Ev sahibi takım
-  awayTeam    String   // Deplasman takımı
-  matchDate   DateTime // Maç tarihi ve saati
-  weekNumber  Int      // Hafta numarası
-  isActive    Boolean  @default(true) // Maç aktif mi?
-  isFinished  Boolean  @default(false) // Maç bitti mi?
-  homeScore   Int?     // Ev sahibi skoru
-  awayScore   Int?     // Deplasman skoru
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  seasonId   String // Sezon ID'si
+  homeTeam   String // Ev sahibi takım
+  awayTeam   String // Deplasman takımı
+  matchDate  DateTime @db.Timestamptz // Maç tarihi ve saati
+  weekNumber Int // Hafta numarası
+  isActive   Boolean  @default(true) // Maç aktif mi?
+  isFinished Boolean  @default(false) // Maç bitti mi?
+  homeScore  Int? // Ev sahibi skoru
+  awayScore  Int? // Deplasman skoru
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // İlişkiler
-  season     Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season      Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   predictions Prediction[]
   questions   Question[]
 
@@ -137,9 +137,9 @@ model Prediction {
   id        String   @id @default(cuid())
   userId    String
   matchId   String
-  homeScore Int      // Kullanıcının tahmin ettiği ev sahibi skoru
-  awayScore Int      // Kullanıcının tahmin ettiği deplasman skoru
-  winner    Winner   // Kazanan tahmini
+  homeScore Int // Kullanıcının tahmin ettiği ev sahibi skoru
+  awayScore Int // Kullanıcının tahmin ettiği deplasman skoru
+  winner    Winner // Kazanan tahmini
   points    Int      @default(0) // Bu tahmin için alınan puan
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -163,11 +163,11 @@ enum Winner {
 model Question {
   id            String       @id @default(cuid())
   matchId       String
-  question      String       // Soru metni
+  question      String // Soru metni
   questionType  QuestionType // Soru tipi
-  options       String[]     // Seçenekler (JSON array)
-  correctAnswer String?      // Doğru cevap
-  points        Int          // Bu soru için verilecek puan
+  options       String[] // Seçenekler (JSON array)
+  correctAnswer String? // Doğru cevap
+  points        Int // Bu soru için verilecek puan
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -182,8 +182,8 @@ model Question {
 // Soru tipi enum
 enum QuestionType {
   MULTIPLE_CHOICE // Çoktan seçmeli
-  YES_NO         // Evet/Hayır
-  TEXT           // Metin
+  YES_NO // Evet/Hayır
+  TEXT // Metin
 }
 
 // Soru cevabı modeli
@@ -191,7 +191,7 @@ model QuestionAnswer {
   id         String   @id @default(cuid())
   userId     String
   questionId String
-  answer     String   // Kullanıcının cevabı
+  answer     String // Kullanıcının cevabı
   points     Int      @default(0) // Bu cevap için alınan puan
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -234,7 +234,7 @@ model SeasonScore {
   correctScores         Int      @default(0) // Doğru skor sayısı
   correctResults        Int      @default(0) // Doğru sonuç sayısı
   specialQuestionPoints Int      @default(0) // Özel soru puanları
-  rank                  Int?     // Sezon sıralaması
+  rank                  Int? // Sezon sıralaması
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

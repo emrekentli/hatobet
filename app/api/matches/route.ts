@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     if (!homeTeam || !awayTeam || !matchDate || !weekNumber || !seasonId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-
+    console.log("deneme",new Date(matchDate));
     // Maçı oluştur
     const newMatch = await prisma.match.create({
       data: {
@@ -198,6 +198,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, homeTeam, awayTeam, matchDate, weekNumber, seasonId, homeScore, awayScore, specialQuestions } = body;
     if (!id) return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
+    console.log("deneme",new Date(matchDate));
 
     // Güncelleme objesi
     const updateData: any = {};
