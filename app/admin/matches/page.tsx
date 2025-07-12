@@ -10,7 +10,7 @@ import { formatDate } from "@/lib/utils"
 import { Match, Season } from "@/types/all-types"
 
 interface SpecialQuestion {
-  id: number
+  id?: string
   question: string
   type: "TEXT" | "MULTIPLE_CHOICE" | "YES_NO"
   options: string[]
@@ -129,8 +129,8 @@ export default function AdminMatchesPage() {
         seasonId: selectedSeasonId,
         homeScore: match.homeScore?.toString() || "",
         awayScore: match.awayScore?.toString() || "",
-        specialQuestions: match.questions?.map((q, idx) => ({
-          id: Number.isNaN(Number(q.id)) ? Date.now() + idx : Number(q.id),
+        specialQuestions: match.questions?.map((q) => ({
+          id: q.id, // String olarak bırak!
           question: q.question,
           type: q.questionType as "TEXT" | "MULTIPLE_CHOICE" | "YES_NO",
           options: q.options || [],
@@ -184,7 +184,6 @@ export default function AdminMatchesPage() {
   // Özel soru ekle
   const addSpecialQuestion = () => {
     const newQuestion: SpecialQuestion = {
-      id: Date.now(),
       question: "",
       type: "TEXT",
       options: [],
@@ -198,14 +197,15 @@ export default function AdminMatchesPage() {
   }
 
   // Özel soru güncelle
-  const updateSpecialQuestion = (questionId: number, field: keyof SpecialQuestion, value: any) => {
+  const updateSpecialQuestion = (questionId: string | undefined, field: keyof SpecialQuestion, value: any) => {
     setFormData(prev => ({
       ...prev,
-      specialQuestions: prev.specialQuestions.map(q => 
-        q.id === questionId ? { ...q, [field]: value } : q
+      specialQuestions: prev.specialQuestions.map(q =>
+          q.id === questionId ? { ...q, [field]: value } : q
       )
     }))
   }
+
 
   // Özel soru sil
   const removeSpecialQuestion = (questionId: number) => {
@@ -323,15 +323,17 @@ export default function AdminMatchesPage() {
       const localDate = formData.matchDate; // "2025-07-01T16:21"
       const utcString = new Date(localDate).toISOString(); // "2025-07-01T13:21:00.000Z" (Türkiye'de seçildiyse)
 
-      // Özel soruları API formatına dönüştür
-      const formattedSpecialQuestions = formData.specialQuestions.map(q => ({
-        id: q.id,
-        question: q.question,
-        questionType: q.type,
-        options: q.options,
-        correctAnswer: q.answer,
-        points: q.points
-      }));
+      const formattedSpecialQuestions = formData.specialQuestions.map(q => {
+        const formatted: any = {
+          question: q.question,
+          questionType: q.type,
+          options: q.options,
+          correctAnswer: q.answer,
+          points: q.points
+        }
+        if (q.id) formatted.id = q.id
+        return formatted
+      })
 
       const body = editMatch
           ? { ...formData, matchDate: utcString, id: editMatch.id, specialQuestions: formattedSpecialQuestions }
