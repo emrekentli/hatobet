@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
-import { getCurrentIstanbulDate } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
       try {
@@ -92,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (!match) {
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
-    if(new Date(match.matchDate) <= getCurrentIstanbulDate()){
+    if(new Date(match.matchDate) <= new Date()){
       return NextResponse.json({ error: "Match is started, cannot submit prediction" }, { status: 400 });
     }
     if (match.isFinished) {

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { calculateMatchPoints } from "@/lib/rankings";
-import { toIstanbulTime } from "@/lib/utils";
 
 /**
  * currentWeek:
@@ -137,7 +136,7 @@ export async function POST(request: NextRequest) {
         seasonId,
         homeTeam,
         awayTeam,
-        matchDate: toIstanbulTime(matchDate),
+        matchDate: new Date(matchDate),
         weekNumber: parseInt(weekNumber),
         homeScore: homeScore ? parseInt(homeScore) : null,
         awayScore: awayScore ? parseInt(awayScore) : null,
@@ -204,7 +203,7 @@ export async function PUT(request: NextRequest) {
     const updateData: any = {};
     if (homeTeam) updateData.homeTeam = homeTeam;
     if (awayTeam) updateData.awayTeam = awayTeam;
-    if (matchDate) updateData.matchDate = toIstanbulTime(matchDate);
+    if (matchDate) updateData.matchDate = new Date(matchDate);
     if (weekNumber) updateData.weekNumber = parseInt(weekNumber);
     if (seasonId) updateData.seasonId = seasonId;
 

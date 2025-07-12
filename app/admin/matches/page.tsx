@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react"
 import Link from "next/link"
 import CommonModal from "@/components/CommonModal"
 import CommonButton from "@/components/CommonButton"
-import { formatDate, getCurrentIstanbulDate } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
 import { Match, Season } from "@/types/all-types"
 
 interface SpecialQuestion {
@@ -352,13 +352,13 @@ export default function AdminMatchesPage() {
   // Maç durumu renkleri
   const getStatusText = (match: Match) => {
     if (match.isFinished) return "Bitti"
-    if (new Date(match.matchDate) > getCurrentIstanbulDate()) return "Bekliyor"
+    if (new Date(match.matchDate) > new Date()) return "Bekliyor"
     return "Devam Ediyor"
   }
 
   const getStatusColor = (match: Match) => {
     if (match.isFinished) return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-    if (new Date(match.matchDate) > getCurrentIstanbulDate()) return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+    if (new Date(match.matchDate) > new Date()) return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
     return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
   }
 
