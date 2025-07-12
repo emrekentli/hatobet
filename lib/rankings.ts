@@ -34,20 +34,13 @@ export async function calculateMatchPoints(matchId: string) {
     for (const prediction of match.predictions) {
       let points = 0;
 
-      // Doğru skor kontrolü (2 puan)
+      // Doğru skor tahmini (3 puan - skor + sonuç)
       if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
-        points += 2;
+        points = 3;
       }
-
-      // Doğru sonuç kontrolü (1 puan) - skor doğru değilse
-      if (prediction.winner === actualWinner && 
-          !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
-        points += 1;
-      }
-
-      // Eğer hem skor hem sonuç doğruysa toplam 3 puan
-      if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
-        points = 3; // Skor doğruysa otomatik olarak sonuç da doğru, toplam 3 puan
+      // Doğru sonuç tahmini (1 puan) - sadece skor doğru değilse
+      else if (prediction.winner === actualWinner) {
+        points = 1;
       }
 
       // Tahmin puanını güncelle
@@ -63,7 +56,7 @@ export async function calculateMatchPoints(matchId: string) {
         for (const answer of question.questionAnswers) {
           let points = 0;
           if (answer.answer === question.correctAnswer) {
-            points = question.points;
+            points = question.points || 3;
           }
 
           // Cevap puanını güncelle
@@ -131,9 +124,9 @@ async function updateWeeklyScores(seasonId: string, weekNumber: number) {
         const userScore = userScores.get(userId);
         userScore.totalPoints += prediction.points;
 
-        if (prediction.points >= 3) {
+        if (prediction.points === 3) {
           userScore.correctScores++;
-        } else if (prediction.points >= 1) {
+        } else if (prediction.points === 1) {
           userScore.correctResults++;
         }
       }

@@ -64,22 +64,17 @@ export async function GET(request: NextRequest) {
       let analysis = [];
 
       if (match.homeScore !== null && match.awayScore !== null) {
-        // Doğru skor kontrolü (3 puan - skor + sonuç)
+        // Doğru skor tahmini (3 puan - skor + sonuç)
         if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
-          expectedPoints += 3;
+          expectedPoints = 3;
           analysis.push("Doğru skor (+3 puan - skor + sonuç)");
-        } else {
-          analysis.push("Yanlış skor (0 puan)");
         }
-
-        // Doğru sonuç kontrolü (1 puan) - sadece skor doğru değilse
-        if (prediction.winner === actualWinner && 
-            !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
-          expectedPoints += 1;
+        // Doğru sonuç tahmini (1 puan) - sadece skor doğru değilse
+        else if (prediction.winner === actualWinner) {
+          expectedPoints = 1;
           analysis.push("Doğru sonuç (+1 puan)");
-        } else if (prediction.winner !== actualWinner && 
-                   !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
-          analysis.push("Yanlış sonuç (0 puan)");
+        } else {
+          analysis.push("Yanlış tahmin (0 puan)");
         }
       }
 
@@ -106,8 +101,9 @@ export async function GET(request: NextRequest) {
           user: answer.user,
           answer: answer.answer,
           currentPoints: answer.points,
-          expectedPoints: answer.answer === question.correctAnswer ? question.points : 0,
-          isCorrect: answer.answer === question.correctAnswer
+          expectedPoints: answer.answer === question.correctAnswer ? (question.points || 3) : 0,
+          isCorrect: answer.answer === question.correctAnswer,
+          pointsMatch: answer.points === (answer.answer === question.correctAnswer ? (question.points || 3) : 0)
         }))
       };
     });
@@ -134,7 +130,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Error debugging points:", error);
+    console.error("Error analyzing points:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -2,12 +2,146 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '../../../auth'
 import { prisma } from '../../../lib/prisma'
 
+/**
+ * Haftalık detaylı skor hesaplar (totalPoints, correctScores, correctResults, specialQuestionPoints)
+ */
+async function calculateWeeklyStats(userId: string, seasonId: string, weekNumber: number) {
+  const predictions = await prisma.prediction.findMany({
+    where: {
+      userId,
+      match: { seasonId, weekNumber }
+    },
+    include: { match: true }
+  });
+  const questionAnswers = await prisma.questionAnswer.findMany({
+    where: {
+      userId,
+      question: { match: { seasonId, weekNumber } }
+    },
+    include: { question: true }
+  });
+
+  let totalPoints = 0;
+  let correctScores = 0;
+  let correctResults = 0;
+  let specialQuestionPoints = 0;
+
+  for (const prediction of predictions) {
+    if (
+        prediction.homeScore === prediction.match.homeScore &&
+        prediction.awayScore === prediction.match.awayScore
+    ) {
+      totalPoints += 3;
+      correctScores += 1;
+    } else if (
+        prediction.match.homeScore !== null &&
+        prediction.match.awayScore !== null
+    ) {
+      const actualWinner =
+          prediction.match.homeScore > prediction.match.awayScore
+              ? 'HOME'
+              : prediction.match.awayScore > prediction.match.homeScore
+                  ? 'AWAY'
+                  : 'DRAW';
+      if (prediction.winner === actualWinner) {
+        totalPoints += 1;
+        correctResults += 1;
+      }
+    }
+  }
+
+  for (const answer of questionAnswers) {
+    if (
+        typeof answer.answer === 'string' &&
+        typeof answer.question.correctAnswer === 'string' &&
+        answer.answer.trim().toLowerCase() === answer.question.correctAnswer.trim().toLowerCase()
+    ) {
+      totalPoints += answer.question.points || 3;
+      specialQuestionPoints += answer.question.points || 3;
+    }
+  }
+
+  return {
+    totalPoints,
+    correctScores,
+    correctResults,
+    specialQuestionPoints,
+  };
+}
+
+/**
+ * Sezonluk detaylı skor hesaplar (totalPoints, correctScores, correctResults, specialQuestionPoints)
+ */
+async function calculateSeasonStats(userId: string, seasonId: string) {
+  const predictions = await prisma.prediction.findMany({
+    where: {
+      userId,
+      match: { seasonId }
+    },
+    include: { match: true }
+  });
+  const questionAnswers = await prisma.questionAnswer.findMany({
+    where: {
+      userId,
+      question: { match: { seasonId } }
+    },
+    include: { question: true }
+  });
+
+  let totalPoints = 0;
+  let correctScores = 0;
+  let correctResults = 0;
+  let specialQuestionPoints = 0;
+
+  for (const prediction of predictions) {
+    if (
+        prediction.homeScore === prediction.match.homeScore &&
+        prediction.awayScore === prediction.match.awayScore
+    ) {
+      totalPoints += 3;
+      correctScores += 1;
+    } else if (
+        prediction.match.homeScore !== null &&
+        prediction.match.awayScore !== null
+    ) {
+      const actualWinner =
+          prediction.match.homeScore > prediction.match.awayScore
+              ? 'HOME'
+              : prediction.match.awayScore > prediction.match.homeScore
+                  ? 'AWAY'
+                  : 'DRAW';
+      if (prediction.winner === actualWinner) {
+        totalPoints += 1;
+        correctResults += 1;
+      }
+    }
+  }
+
+  for (const answer of questionAnswers) {
+    if (
+        typeof answer.answer === 'string' &&
+        typeof answer.question.correctAnswer === 'string' &&
+        answer.answer.trim().toLowerCase() === answer.question.correctAnswer.trim().toLowerCase()
+    ) {
+      totalPoints += answer.question.points || 3;
+      specialQuestionPoints += answer.question.points || 3;
+    }
+  }
+
+  return {
+    totalPoints,
+    correctScores,
+    correctResults,
+    specialQuestionPoints,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Admin yetkisi kontrolü
-    const session = await auth()
+    const session = await auth();
     if (!session?.user || session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Tüm maçları al
@@ -17,78 +151,119 @@ export async function POST(request: NextRequest) {
         awayScore: { not: null }
       },
       include: {
-        predictions: {
-          include: {
-            user: true
-          }
-        },
+        predictions: { include: { user: true } },
         questions: {
           include: {
-            questionAnswers: {
-              include: {
-                user: true
-              }
-            }
+            questionAnswers: { include: { user: true } }
           }
         }
       }
-    })
+    });
 
-    let totalRecalculated = 0
-    let totalPoints = 0
+    let totalRecalculated = 0;
+    let totalPoints = 0;
+
+    // Kullanıcıların etkilendiği kombinasyonları topla
+    const affectedWeeklyScores = new Set<string>();
+    const affectedSeasonScores = new Set<string>();
 
     // Her maç için puanları yeniden hesapla
     for (const match of matches) {
-      // Maç sonucunu belirle (null kontrolü ile)
-      if (match.homeScore === null || match.awayScore === null) continue
-      
-      const matchResult = match.homeScore > match.awayScore ? 'HOME' : 
-                         match.homeScore < match.awayScore ? 'AWAY' : 'DRAW'
+      if (match.homeScore === null || match.awayScore === null) continue;
+
+      const matchResult = match.homeScore > match.awayScore ? 'HOME' :
+          match.homeScore < match.awayScore ? 'AWAY' : 'DRAW';
 
       // Tahminler için puanları hesapla
       for (const prediction of match.predictions) {
-        let points = 0
+        let points = 0;
 
-        // Doğru skor tahmini (3 puan - skor + sonuç)
-        if (prediction.homeScore === match.homeScore && 
-            prediction.awayScore === match.awayScore) {
-          points += 3
-        }
-        // Doğru sonuç tahmini (1 puan) - sadece skor doğru değilse
-        else if (prediction.winner === matchResult) {
-          points += 1
+        if (
+            prediction.homeScore === match.homeScore &&
+            prediction.awayScore === match.awayScore
+        ) {
+          points += 3;
+        } else if (prediction.winner === matchResult) {
+          points += 1;
         }
 
-        // Puanı güncelle
         await prisma.prediction.update({
           where: { id: prediction.id },
           data: { points }
-        })
+        });
 
-        totalPoints += points
+        affectedWeeklyScores.add(`${prediction.userId}__${match.seasonId}__${match.weekNumber}`);
+        affectedSeasonScores.add(`${prediction.userId}__${match.seasonId}`);
+
+        totalPoints += points;
       }
 
       // Özel sorular için puanları hesapla
       for (const question of match.questions) {
         for (const answer of question.questionAnswers) {
-          let points = 0
-
-          // Doğru cevap kontrolü
-          if (answer.answer === question.correctAnswer) {
-            points = question.points || 3
+          let points = 0;
+          if (
+              typeof answer.answer === "string" &&
+              typeof question.correctAnswer === "string" &&
+              answer.answer.trim().toLowerCase() === question.correctAnswer.trim().toLowerCase()
+          ) {
+            points = question.points || 3;
           }
 
-          // Puanı güncelle
           await prisma.questionAnswer.update({
             where: { id: answer.id },
             data: { points }
-          })
+          });
 
-          totalPoints += points
+          affectedWeeklyScores.add(`${answer.userId}__${match.seasonId}__${match.weekNumber}`);
+          affectedSeasonScores.add(`${answer.userId}__${match.seasonId}`);
+
+          totalPoints += points;
         }
       }
 
-      totalRecalculated++
+      totalRecalculated++;
+    }
+
+    // Etkilenen weeklyScore ve seasonScore'ları tekrar detaylı hesapla
+    for (const wsKey of affectedWeeklyScores) {
+      const [userId, seasonId, weekNumber] = wsKey.split('__');
+      const stats = await calculateWeeklyStats(userId, seasonId, Number(weekNumber));
+      await prisma.weeklyScore.upsert({
+        where: {
+          userId_seasonId_weekNumber: {
+            userId,
+            seasonId,
+            weekNumber: Number(weekNumber),
+          }
+        },
+        update: stats,
+        create: {
+          userId,
+          seasonId,
+          weekNumber: Number(weekNumber),
+          ...stats,
+        }
+      });
+    }
+
+    for (const ssKey of affectedSeasonScores) {
+      const [userId, seasonId] = ssKey.split('__');
+      const stats = await calculateSeasonStats(userId, seasonId);
+      await prisma.seasonScore.upsert({
+        where: {
+          userId_seasonId: {
+            userId,
+            seasonId,
+          }
+        },
+        update: stats,
+        create: {
+          userId,
+          seasonId,
+          ...stats,
+        }
+      });
     }
 
     return NextResponse.json({
@@ -96,13 +271,13 @@ export async function POST(request: NextRequest) {
       message: `${totalRecalculated} maç için puanlar yeniden hesaplandı. Toplam ${totalPoints} puan dağıtıldı.`,
       totalRecalculated,
       totalPoints
-    })
+    });
 
   } catch (error) {
-    console.error('Error recalculating points:', error)
+    console.error('Error recalculating points:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+        { error: 'Internal server error' },
+        { status: 500 }
+    );
   }
-} 
+}
