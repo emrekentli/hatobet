@@ -98,7 +98,6 @@ model Season {
   matches      Match[]
   weeklyScores WeeklyScore[]
   seasonScores SeasonScore[]
-  questions    Question[] // Zamanlı ve genel sorular için ilişki
 
   @@map("seasons")
 }
@@ -163,22 +162,18 @@ enum Winner {
 // Özel soru modeli
 model Question {
   id            String       @id @default(cuid())
-  matchId       String?      // Artık opsiyonel
-  seasonId      String?      // Soru bir sezona da bağlanabilir
+  matchId       String
   question      String       // Soru metni
   questionType  QuestionType // Soru tipi
   options       String[]     // Seçenekler (JSON array)
-  correctAnswer String?      // Doğru cevap (admin tarafından girilecek)
+  correctAnswer String?      // Doğru cevap
   points        Int          // Bu soru için verilecek puan
-  isTimed       Boolean      @default(false) // Zamanlı soru mu?
-  deadline      DateTime?    // Tahmin için son tarih (zamanlıysa zorunlu)
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
   // İlişkiler
-  match           Match?           @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  season          Season?          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  match           Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
   questionAnswers QuestionAnswer[]
 
   @@map("questions")
