@@ -34,14 +34,20 @@ export async function calculateMatchPoints(matchId: string) {
     for (const prediction of match.predictions) {
       let points = 0;
 
-      // Doğru sonuç kontrolü
-      if (prediction.winner === actualWinner) {
-        points += 3;
+      // Doğru skor kontrolü (2 puan)
+      if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
+        points += 2;
       }
 
-      // Doğru skor kontrolü
+      // Doğru sonuç kontrolü (1 puan) - skor doğru değilse
+      if (prediction.winner === actualWinner && 
+          !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
+        points += 1;
+      }
+
+      // Eğer hem skor hem sonuç doğruysa toplam 3 puan
       if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
-        points += 10;
+        points = 3; // Skor doğruysa otomatik olarak sonuç da doğru, toplam 3 puan
       }
 
       // Tahmin puanını güncelle
@@ -125,9 +131,9 @@ async function updateWeeklyScores(seasonId: string, weekNumber: number) {
         const userScore = userScores.get(userId);
         userScore.totalPoints += prediction.points;
 
-        if (prediction.points >= 10) {
+        if (prediction.points >= 3) {
           userScore.correctScores++;
-        } else if (prediction.points >= 3) {
+        } else if (prediction.points >= 1) {
           userScore.correctResults++;
         }
       }

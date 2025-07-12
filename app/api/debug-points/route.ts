@@ -64,20 +64,22 @@ export async function GET(request: NextRequest) {
       let analysis = [];
 
       if (match.homeScore !== null && match.awayScore !== null) {
-        // Doğru sonuç kontrolü
-        if (prediction.winner === actualWinner) {
-          expectedPoints += 3;
-          analysis.push("Doğru sonuç (+3 puan)");
-        } else {
-          analysis.push("Yanlış sonuç (0 puan)");
-        }
-
-        // Doğru skor kontrolü
+        // Doğru skor kontrolü (3 puan - skor + sonuç)
         if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
-          expectedPoints += 10;
-          analysis.push("Doğru skor (+10 puan)");
+          expectedPoints += 3;
+          analysis.push("Doğru skor (+3 puan - skor + sonuç)");
         } else {
           analysis.push("Yanlış skor (0 puan)");
+        }
+
+        // Doğru sonuç kontrolü (1 puan) - sadece skor doğru değilse
+        if (prediction.winner === actualWinner && 
+            !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
+          expectedPoints += 1;
+          analysis.push("Doğru sonuç (+1 puan)");
+        } else if (prediction.winner !== actualWinner && 
+                   !(prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore)) {
+          analysis.push("Yanlış sonuç (0 puan)");
         }
       }
 

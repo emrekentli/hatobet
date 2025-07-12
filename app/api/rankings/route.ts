@@ -29,6 +29,10 @@ export async function GET(request: NextRequest) {
       currentSeason = await prisma.season.findFirst({});
     }
 
+    if (!currentSeason) {
+      return NextResponse.json({ error: "No active season found" }, { status: 404 });
+    }
+
     const now = new Date();
     const seasonStart = currentSeason.startDate;
     const weeksSinceStart = Math.floor((now.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
@@ -143,14 +147,15 @@ async function getWeeklyRankings(seasonId: string, week: number, search: string)
         const actualWinner = match.homeScore > match.awayScore ? 'HOME' : 
                            match.awayScore > match.homeScore ? 'AWAY' : 'DRAW';
         
-        if (prediction.winner === actualWinner) {
-          userScore.correctResults++;
-          userScore.totalPoints += 3; // Doğru sonuç için 3 puan
-        }
-
+        // Doğru skor kontrolü (2 puan)
         if (prediction.homeScore === match.homeScore && prediction.awayScore === match.awayScore) {
           userScore.correctScores++;
-          userScore.totalPoints += 10; // Doğru skor için 10 puan
+          userScore.totalPoints += 3; // Doğru skor için 3 puan (skor + sonuç)
+        }
+        // Doğru sonuç kontrolü (1 puan) - sadece skor doğru değilse
+        else if (prediction.winner === actualWinner) {
+          userScore.correctResults++;
+          userScore.totalPoints += 1; // Doğru sonuç için 1 puan
         }
       }
     }

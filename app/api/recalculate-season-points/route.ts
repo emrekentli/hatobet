@@ -66,15 +66,14 @@ export async function POST(request: NextRequest) {
       for (const prediction of match.predictions) {
         let points = 0
 
-        // Maç sonucu tahmini
-        if (prediction.winner === matchResult) {
-          points += 3
-        }
-
-        // Skor tahmini
+        // Doğru skor tahmini (3 puan - skor + sonuç)
         if (prediction.homeScore === match.homeScore && 
             prediction.awayScore === match.awayScore) {
-          points += 5
+          points += 3
+        }
+        // Doğru sonuç tahmini (1 puan) - sadece skor doğru değilse
+        else if (prediction.winner === matchResult) {
+          points += 1
         }
 
         // Puanı güncelle

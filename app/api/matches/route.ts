@@ -103,16 +103,17 @@ export async function GET(request: NextRequest) {
     const availableSeasons = await prisma.season.findMany({ orderBy: { startDate: "desc" } });
     const availableWeeks = Array.from({ length: Math.max(currentSeason.totalWeeks, 1) }, (_, i) => i + 1);
 
-  return NextResponse.json({ 
+    return NextResponse.json({ 
       matches,
       currentSeason,
       currentWeek,
       availableSeasons,
       availableWeeks,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching matches:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error details:", JSON.stringify(error, null, 2));
+    return NextResponse.json({ error: `Internal server error: ${error.message}` }, { status: 500 });
   }
 }
 
@@ -129,7 +130,6 @@ export async function POST(request: NextRequest) {
     if (!homeTeam || !awayTeam || !matchDate || !weekNumber || !seasonId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    console.log("deneme",new Date(matchDate));
     // Maçı oluştur
     const newMatch = await prisma.match.create({
       data: {
@@ -166,10 +166,10 @@ export async function POST(request: NextRequest) {
           data: {
             matchId: newMatch.id,
             question: q.question,
-            questionType: q.type,
+            questionType: q.questionType,
             options: q.options || [],
             points: q.points || 5,
-            correctAnswer: q.answer || null,
+            correctAnswer: q.correctAnswer || null,
           },
         });
       }
@@ -181,9 +181,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, match: newMatch });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating match:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error details:", JSON.stringify(error, null, 2));
+    return NextResponse.json({ error: `Internal server error: ${error.message}` }, { status: 500 });
   }
 }
 
@@ -198,7 +199,6 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, homeTeam, awayTeam, matchDate, weekNumber, seasonId, homeScore, awayScore, specialQuestions } = body;
     if (!id) return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
-    console.log("deneme",new Date(matchDate));
 
     // Güncelleme objesi
     const updateData: any = {};
@@ -222,9 +222,53 @@ export async function PUT(request: NextRequest) {
       scoreUpdated = true;
     }
 
-    const updatedMatch = await prisma.match.update({
-      where: { id },
+    // 1. Önce maçı güncelle
+    await prisma.match.update({
+      where: { id: String(id) },
       data: updateData,
+    });
+
+    // 2. Special questions (Özel sorular) sadece güncelle/ekle (asla silme)
+    if (specialQuestions && Array.isArray(specialQuestions)) {
+      for (const q of specialQuestions) {
+        if (q.id) {
+          // Güncelle (varsa)
+          await prisma.question.update({
+            where: { id: String(q.id) },
+            data: {
+              question: q.question,
+              questionType: q.questionType,
+              options: q.options || [],
+              points: q.points || 5,
+              correctAnswer: q.correctAnswer || null,
+              isActive: true,
+            }
+          });
+        } else {
+          // Yeni ekle
+          await prisma.question.create({
+            data: {
+              matchId: String(id),
+              question: q.question,
+              questionType: q.questionType,
+              options: q.options || [],
+              points: q.points || 5,
+              correctAnswer: q.correctAnswer || null,
+              isActive: true,
+            }
+          });
+        }
+      }
+    }
+
+    // 3. Skor güncellendiyse puanları hesapla
+    if (scoreUpdated) {
+      await calculateMatchPoints(String(id));
+    }
+
+    // 4. Güncel maçı tekrar çek (tüm değişikliklerle birlikte)
+    const refreshedMatch = await prisma.match.findUnique({
+      where: { id: String(id) },
       include: {
         season: true,
         predictions: {
@@ -241,32 +285,11 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    // Special questions güncelle
-    if (specialQuestions) {
-      await prisma.question.deleteMany({ where: { matchId: id } });
-      for (const q of specialQuestions) {
-        await prisma.question.create({
-          data: {
-            matchId: id,
-            question: q.question,
-            questionType: q.type,
-            options: q.options || [],
-            points: q.points || 5,
-            correctAnswer: q.answer || null,
-          },
-        });
-      }
-    }
-
-    // Skor güncellendiyse puanları hesapla
-    if (scoreUpdated) {
-      await calculateMatchPoints(id);
-    }
-
-    return NextResponse.json({ success: true, match: updatedMatch });
-  } catch (error) {
+    return NextResponse.json({ success: true, match: refreshedMatch });
+  } catch (error: any) {
     console.error("Error updating match:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error details:", JSON.stringify(error, null, 2));
+    return NextResponse.json({ error: `Internal server error: ${error.message}` }, { status: 500 });
   }
 }
 
@@ -282,11 +305,12 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
 
-    await prisma.match.delete({ where: { id } });
+    await prisma.match.delete({ where: { id: String(id) } });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting match:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error details:", JSON.stringify(error, null, 2));
+    return NextResponse.json({ error: `Internal server error: ${error.message}` }, { status: 500 });
   }
 }

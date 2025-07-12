@@ -9,27 +9,37 @@ import WeekSelector from "@/components/WeekSelector";
 import { useSession } from "next-auth/react";
 
 // API functions
-const mapMatchData = (match: any): Match => ({
-  id: match.id,
-  homeTeam: match.homeTeam,
-  awayTeam: match.awayTeam,
-  matchDate: match.matchDate,
-  weekNumber: match.weekNumber,
-  homeScore: match.homeScore,
-  awayScore: match.awayScore,
-  isActive: match.isActive,
-  isFinished: match.isFinished,
-  userPrediction: undefined, // Will be fetched separately
-  questions: (match.questions || []).map((q: any) => ({
-    id: q.id,
-    question: q.question,
-    questionType: q.questionType,
-    points: q.points,
-    options: q.options || [],
-    correctAnswer: q.correctAnswer,
-    questionAnswers: q.questionAnswers || [],
-  })),
-});
+const mapMatchData = (match: any, userPredictions?: { [key: string]: any }): Match => {
+  // Kullanıcının bu maç için tahminini bul
+  const userPrediction = userPredictions?.[match.id];
+  
+  return {
+    id: match.id,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    matchDate: match.matchDate,
+    weekNumber: match.weekNumber,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    isActive: match.isActive,
+    isFinished: match.isFinished,
+    userPrediction: userPrediction ? {
+      homeScore: userPrediction.homeScore,
+      awayScore: userPrediction.awayScore,
+      points: userPrediction.points || 0,
+      userId: userPrediction.userId
+    } : undefined,
+    questions: (match.questions || []).map((q: any) => ({
+      id: q.id,
+      question: q.question,
+      questionType: q.questionType,
+      points: q.points,
+      options: q.options || [],
+      correctAnswer: q.correctAnswer,
+      questionAnswers: q.questionAnswers || [],
+    })),
+  };
+};
 
 const fetchUserPredictions = async (week: number = 1): Promise<MatchPrediction[]> => {
   try {
@@ -117,7 +127,23 @@ export default function HomePage() {
         const url = selectedWeek === 0 ? '/api/matches' : `/api/matches?week=${selectedWeek}`;
         const response = await fetch(url);
         const data = await response.json();
-        setMatches((data.matches || []).map(mapMatchData));
+        
+        // Kullanıcı tahminlerini yükle
+        const weekToFetch = selectedWeek === 0 ? (data.currentWeek || 1) : selectedWeek;
+        const userPredictions = await fetchUserPredictions(weekToFetch);
+        const predictionsMap: { [key: string]: any } = {};
+        userPredictions.forEach((pred: any) => {
+          predictionsMap[pred.matchId] = {
+            homeScore: pred.homeScore,
+            awayScore: pred.awayScore,
+            points: pred.points,
+            userId: pred.userId
+          };
+        });
+        setPredictions(predictionsMap);
+        
+        // Maçları kullanıcı tahminleriyle birlikte map et
+        setMatches((data.matches || []).map((match: any) => mapMatchData(match, predictionsMap)));
         setAvailableWeeks(data.availableWeeks || []);
         setActiveWeek(data.activeWeek || 1);
 
@@ -151,26 +177,7 @@ export default function HomePage() {
     loadData();
   }, [selectedWeek]);
 
-  // Load predictions when week changes
-  useEffect(() => {
-    const loadPredictions = async () => {
-      if (selectedWeek > 0) {
-        const userPredictions = await fetchUserPredictions(selectedWeek);
-        const predictionsMap: { [key: string]: any } = {};
-        userPredictions.forEach((pred: any) => {
-          predictionsMap[pred.matchId] = {
-            homeScore: pred.homeScore,
-            awayScore: pred.awayScore,
-            points: pred.points,
-            userId: pred.userId
-          };
-        });
-        setPredictions(predictionsMap);
-      }
-    };
 
-    loadPredictions();
-  }, [selectedWeek]);
 
   // Handle prediction submission
   const handleMakePrediction = async (matchId: string) => {
@@ -201,7 +208,12 @@ export default function HomePage() {
         setSuccessStates((prev) => ({ ...prev, [matchId]: true }));
         setTimeout(() => setSuccessStates((prev) => ({ ...prev, [matchId]: false })), 2000);
 
-        const weekToFetch = selectedWeek === 0 ? 1 : selectedWeek;
+        // Maçları yeniden yükle (tahminlerle birlikte)
+        const url = selectedWeek === 0 ? '/api/matches' : `/api/matches?week=${selectedWeek}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        const weekToFetch = selectedWeek === 0 ? (data.currentWeek || 1) : selectedWeek;
         const updatedPredictions = await fetchUserPredictions(weekToFetch);
         const updatedPredictionsMap: { [key: string]: any } = {};
         updatedPredictions.forEach((pred: any) => {
@@ -213,6 +225,7 @@ export default function HomePage() {
           };
         });
         setPredictions(updatedPredictionsMap);
+        setMatches((data.matches || []).map((match: any) => mapMatchData(match, updatedPredictionsMap)));
       } else {
         alert("Tahmin kaydedilirken bir hata oluştu");
       }

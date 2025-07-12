@@ -288,6 +288,21 @@ export default function AdminMatchesPage() {
         setError("Soru puanları 1'den küçük olamaz")
         return false
       }
+      
+      // Doğru cevap kontrolü sadece skor girildiğinde yapılır
+      const hasScore = (formData.homeScore && formData.homeScore.trim() !== "") || 
+                      (formData.awayScore && formData.awayScore.trim() !== "");
+      
+      if (hasScore) {
+        if (!question.answer || !question.answer.trim()) {
+          setError("Maç skoru girildiğinde tüm özel soruların doğru cevabı girilmelidir")
+          return false
+        }
+        if (question.type === "MULTIPLE_CHOICE" && !question.options.includes(question.answer)) {
+          setError("Çoktan seçmeli sorularda doğru cevap seçenekler arasından seçilmelidir")
+          return false
+        }
+      }
     }
     
     return true
@@ -308,9 +323,19 @@ export default function AdminMatchesPage() {
       const localDate = formData.matchDate; // "2025-07-01T16:21"
       const utcString = new Date(localDate).toISOString(); // "2025-07-01T13:21:00.000Z" (Türkiye'de seçildiyse)
 
+      // Özel soruları API formatına dönüştür
+      const formattedSpecialQuestions = formData.specialQuestions.map(q => ({
+        id: q.id,
+        question: q.question,
+        questionType: q.type,
+        options: q.options,
+        correctAnswer: q.answer,
+        points: q.points
+      }));
+
       const body = editMatch
-          ? { ...formData, matchDate: utcString, id: editMatch.id }
-          : { ...formData, matchDate: utcString };
+          ? { ...formData, matchDate: utcString, id: editMatch.id, specialQuestions: formattedSpecialQuestions }
+          : { ...formData, matchDate: utcString, specialQuestions: formattedSpecialQuestions };
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -699,6 +724,45 @@ export default function AdminMatchesPage() {
                           className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                           placeholder="Puan"
                         />
+                      </div>
+                      
+                      {/* Doğru Cevap Alanı */}
+                      <div className="mt-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Doğru Cevap {((formData.homeScore && formData.homeScore.trim() !== "") || (formData.awayScore && formData.awayScore.trim() !== "")) && <span className="text-red-500">*</span>}
+                        </label>
+                        {question.type === "MULTIPLE_CHOICE" && question.options.length > 0 ? (
+                          <select
+                            value={question.answer || ""}
+                            onChange={e => updateSpecialQuestion(question.id, "answer", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                          >
+                            <option value="">{((formData.homeScore && formData.homeScore.trim() !== "") || (formData.awayScore && formData.awayScore.trim() !== "")) ? "Doğru cevabı seçin *" : "Doğru cevabı seçin (opsiyonel)"}</option>
+                            {question.options.map((option, idx) => (
+                              <option key={idx} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        ) : question.type === "YES_NO" ? (
+                          <select
+                            value={question.answer || ""}
+                            onChange={e => updateSpecialQuestion(question.id, "answer", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                          >
+                            <option value="">{((formData.homeScore && formData.homeScore.trim() !== "") || (formData.awayScore && formData.awayScore.trim() !== "")) ? "Doğru cevabı seçin *" : "Doğru cevabı seçin (opsiyonel)"}</option>
+                            <option value="Evet">Evet</option>
+                            <option value="Hayır">Hayır</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={question.answer || ""}
+                            onChange={e => updateSpecialQuestion(question.id, "answer", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                            placeholder={((formData.homeScore && formData.homeScore.trim() !== "") || (formData.awayScore && formData.awayScore.trim() !== "")) ? "Doğru cevabı yazın... *" : "Doğru cevabı yazın... (opsiyonel)"}
+                          />
+                        )}
                       </div>
                        {question.type === "MULTIPLE_CHOICE" && (
                          <div className="space-y-2">
