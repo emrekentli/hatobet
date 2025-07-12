@@ -18,7 +18,6 @@ interface SpecialQuestion {
   points: number
 }
 
-// UTC tarihini datetime-local input formatına çevirir
 function toDatetimeLocal(dateString: string) {
   const date = new Date(dateString);
   const offset = date.getTimezoneOffset();
@@ -306,8 +305,12 @@ export default function AdminMatchesPage() {
     try {
       const method = editMatch ? "PUT" : "POST"
       const url = "/api/matches"
-      const body = editMatch ? { ...formData, id: editMatch.id } : formData
-      
+      const localDate = formData.matchDate; // "2025-07-01T16:21"
+      const utcString = new Date(localDate).toISOString(); // "2025-07-01T13:21:00.000Z" (Türkiye'de seçildiyse)
+
+      const body = editMatch
+          ? { ...formData, matchDate: utcString, id: editMatch.id }
+          : { ...formData, matchDate: utcString };
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
