@@ -17,20 +17,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Question ID and answer are required" }, { status: 400 });
     }
 
-    // Check if user already answered this question
-    const existingAnswer = await prisma.questionAnswer.findUnique({
-      where: {
-        userId_questionId: {
-          userId: session.user.id,
-          questionId: questionId,
-        },
-      },
-    });
-
-    if (existingAnswer) {
-      return NextResponse.json({ error: "You have already answered this question" }, { status: 400 });
-    }
-
     // Get the question to check if it's still active
     const question = await prisma.question.findUnique({
       where: { id: questionId },
@@ -48,33 +34,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Match is finished, cannot submit answer" }, { status: 400 });
     }
 
-    // Create the answer
-    const newAnswer = await prisma.questionAnswer.create({
-      data: {
-        userId: session.user.id,
-        questionId: questionId,
-        answer: answer,
-        points: 0, // Will be calculated when match ends
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+    // Check if user already answered this question
+    const existingAnswer = await prisma.questionAnswer.findUnique({
+      where: {
+        userId_questionId: {
+          userId: session.user.id,
+          questionId: questionId,
         },
-        question: true,
       },
     });
 
-    return NextResponse.json({ success: true, answer: newAnswer });
+    let answerResult;
+
+    if (existingAnswer) {
+      // Update the existing answer
+      answerResult = await prisma.questionAnswer.update({
+        where: {
+          userId_questionId: {
+            userId: session.user.id,
+            questionId: questionId,
+          },
+        },
+        data: {
+          answer: answer,
+          points: 0, // Reset points, will be recalculated later if needed
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          question: true,
+        },
+      });
+    } else {
+      // Create a new answer
+      answerResult = await prisma.questionAnswer.create({
+        data: {
+          userId: session.user.id,
+          questionId: questionId,
+          answer: answer,
+          points: 0, // Will be calculated when match ends
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          question: true,
+        },
+      });
+    }
+
+    return NextResponse.json({ success: true, answer: answerResult });
   } catch (error) {
     console.error("Error submitting answer:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
 // GET - Get answers for a question (admin only)
 export async function GET(request: NextRequest) {
   try {
