@@ -69,6 +69,8 @@ export default function AdminMatchDetailPage() {
   const [predictionSearch, setPredictionSearch] = useState("")
   const [debugData, setDebugData] = useState<any>(null)
   const [showDebug, setShowDebug] = useState(false)
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
   // Authentication check
   useEffect(() => {
@@ -80,6 +82,7 @@ export default function AdminMatchDetailPage() {
     }
     
     fetchMatch()
+    fetchAllUsers();
   }, [session, status, router, matchId])
 
   const fetchMatch = async () => {
@@ -104,6 +107,19 @@ export default function AdminMatchDetailPage() {
       setLoading(false)
     }
   }
+
+  const fetchAllUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await fetch("/api/users");
+      const data = await response.json();
+      setAllUsers(data.users || []);
+    } catch (error) {
+      setAllUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
 
   const handleUpdateScore = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -583,16 +599,37 @@ export default function AdminMatchDetailPage() {
                           {new Date(prediction.createdAt).toLocaleString('tr-TR')}
                         </div>
                       </div>
-                                              <div className="text-right">
-                          <div className={`font-bold ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                            {prediction.points} puan
-                          </div>
-                          <div className={`text-xs font-medium ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {prediction.points > 0 ? '✓ Doğru' : '✗ Yanlış'}
-                          </div>
+                      <div className="text-right">
+                        <div className={`font-bold ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {prediction.points} puan
                         </div>
+                        <div className={`text-xs font-medium ${prediction.points > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {prediction.points > 0 ? '✓ Doğru' : '✗ Yanlış'}
+                        </div>
+                      </div>
                     </div>
                   ))
+                )}
+              </div>
+              {/* Henüz tahmin yapmayan kullanıcılar */}
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Henüz Tahmin Yapmayanlar</h3>
+                {loadingUsers ? (
+                  <div className="text-gray-500 dark:text-gray-400">Yükleniyor...</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {allUsers
+                      .filter(user => !match.predictions.some(p => p.user.id === user.id))
+                      .map(user => (
+                        <li key={user.id} className="text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                          <span className="font-medium">{user.name || user.email}</span>
+                          <span className="text-xs text-gray-500">{user.email}</span>
+                        </li>
+                      ))}
+                    {allUsers.filter(user => !match.predictions.some(p => p.user.id === user.id)).length === 0 && (
+                      <li className="text-sm text-gray-500 dark:text-gray-400">Tüm kullanıcılar tahmin yaptı.</li>
+                    )}
+                  </ul>
                 )}
               </div>
             </div>

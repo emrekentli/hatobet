@@ -267,7 +267,7 @@ export default function HomePage() {
   const fetchMatchDetails = async (matchId: string) => {
     setLoadingPredictions(true);
     try {
-      const response = await fetch(`/api/predictions?matchId=${matchId}`);
+      const response = await fetch(`/api/predictions/all-for-match?matchId=${matchId}`);
       const data = await response.json();
       setMatchPredictions(data.predictions || []);
     } catch (error) {
