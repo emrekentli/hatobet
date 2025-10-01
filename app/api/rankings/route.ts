@@ -187,8 +187,14 @@ async function getWeeklyRankings(seasonId: string, week: number, search: string)
     );
   }
 
-  // Puanlara göre sırala
-  rankings.sort((a, b) => b.totalPoints - a.totalPoints);
+    rankings.sort((a, b) => {
+        const diff = b.totalPoints - a.totalPoints;
+        if (diff !== 0) return diff;
+        const aKey = (a.user.name || a.user.username || a.user.email || '').toString();
+        const bKey = (b.user.name || b.user.username || b.user.email || '').toString();
+
+        return aKey.localeCompare(bKey, 'tr', { sensitivity: 'base' });
+    });
 
   // Sıra numaralarını ekle
   rankings.forEach((ranking, index) => {
@@ -264,7 +270,14 @@ async function getSeasonRankings(seasonId: string, search: string) {
   }
 
   // Puanlara göre sırala
-  rankings.sort((a, b) => b.totalPoints - a.totalPoints);
+    rankings.sort((a, b) => {
+        const diff = b.totalPoints - a.totalPoints;
+        if (diff !== 0) return diff;
+        const aKey = (a.user.name || a.user.username || a.user.email || '').toString();
+        const bKey = (b.user.name || b.user.username || b.user.email || '').toString();
+
+        return aKey.localeCompare(bKey, 'tr', { sensitivity: 'base' });
+    });
 
   // Sıra numaralarını ekle
   rankings.forEach((ranking, index) => {
