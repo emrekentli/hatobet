@@ -85,7 +85,14 @@ const MatchRow: React.FC<MatchRowProps> = ({
           ) : !match.isActive ? (
             <div className="text-xs text-gray-500 dark:text-gray-400">Maç henüz aktif değil</div>
           ) : new Date(match.matchDate) <= new Date() ? (
-            <div className="text-xs text-red-600 dark:text-red-400">Maç başladı, tahmin yapamazsınız</div>
+            <div className="flex flex-col items-end space-y-1">
+              <div className="text-xs text-red-600 dark:text-red-400">Maç başladı, tahmin yapamazsınız</div>
+              {match.userPrediction && (
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  Tahmininiz: <span className="font-semibold text-gray-900 dark:text-white">{match.userPrediction.homeScore} - {match.userPrediction.awayScore}</span>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex items-center space-x-2">
               <input
